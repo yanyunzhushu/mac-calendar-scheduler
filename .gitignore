@@ -1,0 +1,23 @@
+# 依赖
+node_modules/
+
+# Next.js 构建输出
+.next/
+out/
+
+# 用户本地数据（SQLite 数据库文件）
+data/
+
+# 环境变量
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 开发工具
+*.tsbuildinfo
+next-env.d.ts
+
+# macOS 双击启动器（个人快捷方式，仅本机可用）
+日程安排.app

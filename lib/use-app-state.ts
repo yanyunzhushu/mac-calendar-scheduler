@@ -1,10 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { todayKey } from './date-utils'
 import type { AppState, Holiday, Task } from './types'
-
-const STORAGE_KEY = 'calendar-scheduler-state-v1'
 
 function createId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
@@ -16,153 +13,147 @@ const EMPTY_STATE: AppState = {
   holidayModeEnabled: false,
 }
 
-/** 首次加载时填充一些示例任务，方便用户立即看到效果 */
-function createSeedState(): AppState {
-  const t = todayKey()
-  const id1 = createId()
-  const id2 = createId()
-  const id3 = createId()
-  return {
-    holidayModeEnabled: false,
-    holidays: [],
-    tasks: [
-      {
-        id: id1,
-        type: 'recurring',
-        name: '每日晨间锻炼',
-        description: '30 分钟有氧运动',
-        createdAt: Date.now(),
-        completions: {},
-        startDate: t,
-        freq: 'daily',
-        interval: 1,
-        end: { type: 'never' },
-      },
-      {
-        id: id2,
-        type: 'ebbinghaus',
-        name: '背诵英语单词 Unit 5',
-        description: '艾宾浩斯遗忘曲线复习',
-        createdAt: Date.now(),
-        completions: {},
-        startDate: t,
-        intervals: [0, 1, 2, 4, 7, 15, 30],
-        end: { type: 'never' },
-      },
-      {
-        id: id3,
-        type: 'progress',
-        name: '每 3 天读一篇论文',
-        description: '持续推进的阅读计划',
-        createdAt: Date.now(),
-        completions: {},
-        startDate: t,
-        interval: 3,
-      },
-    ],
-  }
-}
-
 export function useAppState() {
   const [state, setState] = useState<AppState>(EMPTY_STATE)
   const [loaded, setLoaded] = useState(false)
 
-  // 初始化：从 localStorage 读取
+  // 初始化：从后端 API 加载全部数据
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as AppState
+    async function load() {
+      try {
+        const [tasksRes, holidaysRes, configRes] = await Promise.all([
+          fetch('/api/tasks'),
+          fetch('/api/holidays'),
+          fetch('/api/config'),
+        ])
+        const tasks: Task[] = await tasksRes.json()
+        const holidays: Holiday[] = await holidaysRes.json()
+        const config = await configRes.json()
         setState({
-          tasks: parsed.tasks ?? [],
-          holidays: parsed.holidays ?? [],
-          holidayModeEnabled: parsed.holidayModeEnabled ?? false,
+          tasks: tasks ?? [],
+          holidays: holidays ?? [],
+          holidayModeEnabled: config.holidayModeEnabled ?? false,
         })
-      } else {
-        setState(createSeedState())
+      } catch (e) {
+        console.error('从后端加载数据失败（服务器可能未启动）:', e)
+        setState(EMPTY_STATE)
       }
-    } catch {
-      setState(createSeedState())
+      setLoaded(true)
     }
-    setLoaded(true)
+    load()
   }, [])
 
-  // 持久化
-  useEffect(() => {
-    if (!loaded) return
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch {
-      // 忽略写入失败
-    }
-  }, [state, loaded])
+  // 以下操作为"乐观更新"：先改本地状态让 UI 立即响应，
+  // 再异步发请求让后端持久化；请求失败只打印日志不影响使用。
 
-  const addTask = useCallback((task: Omit<Task, 'id' | 'createdAt' | 'completions'>) => {
-    setState((prev) => ({
-      ...prev,
-      tasks: [
-        ...prev.tasks,
-        { ...task, id: createId(), createdAt: Date.now(), completions: {} } as Task,
-      ],
-    }))
-  }, [])
+  const addTask = useCallback(
+    (task: Omit<Task, 'id' | 'createdAt' | 'completions'>) => {
+      const newTask = { ...task, id: createId(), createdAt: Date.now(), completions: {} } as Task
+      fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTask),
+      }).catch((e) => console.error('POST /api/tasks 失败:', e))
+      setState((prev) => ({ ...prev, tasks: [...prev.tasks, newTask] }))
+    },
+    [],
+  )
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
-    setState((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) => (t.id === id ? ({ ...t, ...updates } as Task) : t)),
-    }))
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === id)
+      if (!task) return prev
+      const updated = { ...task, ...updates } as Task
+      fetch('/api/tasks/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch((e) => console.error('PUT /api/tasks/:id 失败:', e))
+      return { ...prev, tasks: prev.tasks.map((t) => (t.id === id ? updated : t)) }
+    })
   }, [])
 
   const deleteTask = useCallback((id: string) => {
     setState((prev) => ({ ...prev, tasks: prev.tasks.filter((t) => t.id !== id) }))
+    fetch('/api/tasks/' + id, { method: 'DELETE' }).catch((e) =>
+      console.error('DELETE /api/tasks/:id 失败:', e),
+    )
   }, [])
 
-  /** 标记某任务在某日期完成 */
   const completeInstance = useCallback((taskId: string, date: string) => {
-    setState((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, completions: { ...t.completions, [date]: Date.now() } }
-          : t,
-      ),
-    }))
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === taskId)
+      if (!task) return prev
+      const updated = {
+        ...task,
+        completions: { ...task.completions, [date]: Date.now() },
+      } as Task
+      fetch('/api/tasks/' + taskId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch((e) => console.error('PUT /api/tasks/:id (complete) 失败:', e))
+      return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) }
+    })
   }, [])
 
-  /** 取消某任务在某日期的完成 */
   const uncompleteInstance = useCallback((taskId: string, date: string) => {
-    setState((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) => {
-        if (t.id !== taskId) return t
-        const next = { ...t.completions }
-        delete next[date]
-        return { ...t, completions: next }
-      }),
-    }))
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === taskId)
+      if (!task) return prev
+      const next = { ...task.completions }
+      delete next[date]
+      const updated = { ...task, completions: next } as Task
+      fetch('/api/tasks/' + taskId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch((e) => console.error('PUT /api/tasks/:id (uncomplete) 失败:', e))
+      return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) }
+    })
   }, [])
 
   const togglePause = useCallback((taskId: string) => {
-    setState((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) => (t.id === taskId ? { ...t, paused: !t.paused } : t)),
-    }))
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === taskId)
+      if (!task) return prev
+      const updated = { ...task, paused: !task.paused } as Task
+      fetch('/api/tasks/' + taskId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch((e) => console.error('PUT /api/tasks/:id (pause) 失败:', e))
+      return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) }
+    })
   }, [])
 
   const setHolidayModeEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, holidayModeEnabled: enabled }))
+    fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holidayModeEnabled: enabled }),
+    }).catch((e) => console.error('PUT /api/config 失败:', e))
   }, [])
 
   const addHoliday = useCallback((start: string, end: string) => {
-    setState((prev) => ({
-      ...prev,
-      holidays: [...prev.holidays, { id: createId(), start, end }],
-    }))
+    const holiday: Holiday = { id: createId(), start, end }
+    setState((prev) => ({ ...prev, holidays: [...prev.holidays, holiday] }))
+    fetch('/api/holidays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(holiday),
+    }).catch((e) => console.error('POST /api/holidays 失败:', e))
   }, [])
 
   const deleteHoliday = useCallback((id: string) => {
-    setState((prev) => ({ ...prev, holidays: prev.holidays.filter((h) => h.id !== id) }))
+    setState((prev) => ({
+      ...prev,
+      holidays: prev.holidays.filter((h) => h.id !== id),
+    }))
+    fetch('/api/holidays/' + id, { method: 'DELETE' }).catch((e) =>
+      console.error('DELETE /api/holidays/:id 失败:', e),
+    )
   }, [])
 
   return {
