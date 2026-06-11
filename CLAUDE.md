@@ -5,10 +5,11 @@
 ## 常用命令
 
 ```bash
-pnpm dev        # 启动 Next.js 开发服务器 (localhost:3000)
-pnpm build      # 生产构建
-pnpm start      # 启动生产服务器
+pnpm dev        # 启动静态服务器 (localhost:3000) + 自动打开浏览器
+pnpm build      # 构建静态导出（output: export，输出到 out/）
+pnpm dev:next   # 开发模式（Next.js Turbopack 热更新）
 pnpm lint       # 运行 ESLint
+pkill -f "scripts/serve"  # 手动停止服务器
 ```
 
 > **注意**：首次运行 `pnpm install` 后，需要在 `package.json` 中配置：
@@ -17,27 +18,32 @@ pnpm lint       # 运行 ESLint
 > ```
 > 然后 `pnpm approve-builds better-sqlite3`，否则 `better-sqlite3` 不会编译。
 
-未配置测试框架。应用有后端 API 路由（需要服务器运行）。
+未配置测试框架。应用纯客户端运行，无需后端服务。
 
 ## 项目概述
 
-个人日历任务管理应用（中文界面），支持三种任务类型和三种视图模式（月/周/日）。数据存储在本地 SQLite 文件 `data/calendar.db` 中。
+个人日历任务管理应用（中文界面），支持三种任务类型和三种视图模式（月/周/日）。数据存储在浏览器 localStorage 中。
 
-**快速启动**：双击桌面 `日程安排.app`（或项目目录中同名文件）→ 静默启动服务器 → 自动弹出浏览器。
-- 如需手动停止服务器：`pkill -f "next-server"`
+**启动**：终端运行 `pnpm dev` → 自动打开浏览器。
+- 服务器约 1 秒就绪，再次运行直接复用已有服务器。
+- 如需手动停止：`pkill -f "scripts/serve"`
 
 ### 技术栈
 
-- **Next.js 16** (App Router) + **API Routes**（提供后端接口，不再是纯客户端）
+- **Next.js 16** + **static export**（`output: 'export'`，纯静态站点）
 - **React 19**, **TypeScript 5.7**
 - **Tailwind CSS 4** + `tw-animate-css` + shadcn/ui 组件（位于 `components/ui/`）
-- **better-sqlite3** — SQLite 数据库（Node.js 原生模块，本地存储）
+- **数据持久化**：浏览器 `localStorage`
 - `@base-ui/react` 用于无障碍原语（Select, RadioGroup, Switch）
 - `lucide-react` 图标库
 - **PWA 支持**：`manifest.json` + `sw.js`（未做离线缓存，仅提供"添加到 Dock"安装能力）
 - 路径别名：`@/` 映射到项目根目录
 
 ## 架构
+
+> **架构说明（2026-06-11 更新）**：应用已改为纯客户端应用。
+> 所有数据存储在浏览器 localStorage 中，无服务器端依赖。
+> 使用 `output: 'export'` 预编译为纯静态文件，`scripts/serve.mjs` 提供轻量 HTTP 服务。
 
 ### 状态层 (`lib/`)
 
@@ -58,56 +64,19 @@ pnpm lint       # 运行 ESLint
   - `buildInstanceMap()` — 主要入口：给定任务+假期+范围，返回 `Record<DateKey, TaskInstance[]>`
   - 假期感知：`findHoliday()` / `adjustForHoliday()` — 进度任务的截止日自动顺延过假期
 
-- **`db.ts`** (2026-06-10 新增) — SQLite 数据库核心模块：
-  - `getDb()` — 单例数据库连接，自动建表
-  - 三张表：`tasks`、`holidays`、`config`（假期模式开关）
-  - 序列化/反序列化：数据库的行 ↔ TypeScript `Task` 类型转换（`rowToTask` / `taskToRow`）
-  - CRUD：`getAllTasks` / `createTask` / `updateTask` / `deleteTask`
-  - 首次运行时自动填充 5 个示例任务（今日创建）
-  - **如果后续迁移到 Tauri，此文件需要重写为 Rust 的 `tauri::command`**
-
 - **`use-app-state.ts`** — React 钩子：
-  - **与 localStorage 无关！** 所有 CRUD 操作通过 `fetch()` 调用后端 API
-  - 采用"乐观更新"模式：先更新本地状态（UI 立即响应），再异步发送 API 请求
-  - 初始化时同时请求三个端点：`GET /api/tasks`、`GET /api/holidays`、`GET /api/config`
+  - 所有数据持久化到浏览器 `localStorage`，键名为 `calendar-app-state`
+  - 初始化时同步加载 localStorage 数据（首次使用自动填充 5 个示例任务）
+  - 每次状态变化自动保存到 localStorage
   - `createId()` 生成短 ID（`Math.random` + `Date.now` 混合）
-  - **如果后续迁移到 Tauri，需将 `fetch('/api/...')` 改为 Tauri 的 `invoke('...')` 调用**
+
+- **`use-app-state.ts`** — React 钩子：（见上方 `lib/` 章节）
 
 - **`status-visuals.ts`** — 无状态辅助函数，将 `InstanceStatus`/`TaskType` 映射为 CSS 变量颜色、标签和不透明度规则。
 
-### API 层 (`app/api/`) (2026-06-10 新增)
+### API 层 `app/api/` (已移除)
 
-应用不再纯客户端运行，有以下后端路由：
-
-| 路由 | 方法 | 作用 |
-|------|------|------|
-| `/api/tasks` | GET | 获取全部任务（从 SQLite 读取） |
-| `/api/tasks` | POST | 创建新任务 |
-| `/api/tasks/[id]` | PUT | 更新任务（含 completions、paused 等） |
-| `/api/tasks/[id]` | DELETE | 删除任务 |
-| `/api/holidays` | GET | 获取全部假期 |
-| `/api/holidays` | POST | 创建假期 |
-| `/api/holidays/[id]` | DELETE | 删除假期 |
-| `/api/config` | GET | 获取配置（当前仅 holidayModeEnabled） |
-| `/api/config` | PUT | 更新配置 |
-
-每个路由直接调用 `lib/db.ts` 中的 SQLite 查询函数。
-
-### 桌面启动器：「日程安排.app」(2026-06-10 新增)
-
-项目根目录下有一个 macOS 原生应用包（Swift 编译，Mach-O arm64 二进制），功能：
-
-```
-双击 → 检测 localhost:3000 是否已监听
-         ├─ 是 → 直接打开浏览器
-         └─ 否 → 后台启动 pnpm dev → 等服务器就绪 → 打开浏览器
-```
-
-- 日志写入 `/tmp/calendar-app.log`
-- 关浏览器**不会停服务器**，需手动 `pkill -f "next-server"`
-- 桌面上的同名文件是符号链接（快捷方式）
-- `.gitignore` 已排除此文件
-- **如果后续迁移到 Tauri，此文件可废弃，用 Tauri 生成的 .app 替代**
+**2026-06-11 移除**：应用改为纯客户端，不再有后端 API 路由。数据直接读写浏览器 localStorage。
 
 ### UI 层 (`components/calendar/`)
 
@@ -128,12 +97,12 @@ pnpm lint       # 运行 ESLint
 
 ### 关键数据流
 
-1. `useAppState()` 初始化时通过 `GET /api/tasks`、`GET /api/holidays`、`GET /api/config` 从 SQLite 加载全部数据
+1. `useAppState()` 初始化时从 `localStorage` 加载全部数据（首次使用则填充 5 个示例任务）
 2. `calendar-app.tsx` 调用 `buildInstanceMap(tasks, activeHolidays, rangeStart, rangeEnd, today)`，范围由 useMemo 缓存
 3. 实例映射传递给视图组件进行渲染
 4. 用户交互（完成/撤销完成、创建/编辑/删除任务、暂停切换）通过回调到 `useAppState`
-5. `useAppState` 先更新本地状态（乐观更新），再异步通过 `PUT/POST/DELETE` API 持久化到 SQLite
-6. 页面刷新时重新从 API 加载
+5. `useAppState` 更新 React 状态，状态变化后自动持久化到 `localStorage`
+6. 页面刷新时重新从 `localStorage` 加载
 
 ### 假期模式
 
@@ -157,8 +126,9 @@ pnpm lint       # 运行 ESLint
 | 文件 | 原因 | 替换方案 |
 |------|------|---------|
 | `app/api/*` 全部路由 | Tauri 不用 HTTP API，而是通过 IPC 调用 Rust 函数 | 删除，改为 `src-tauri/src/commands.rs` 中的 `#[tauri::command]` |
-| `lib/db.ts` | `better-sqlite3` 是 Node.js 原生模块，Tauri 无法使用 | 在 Rust 侧用 `rusqlite` crate，提供相同的 CRUD 函数 |
-| `lib/use-app-state.ts` 中的 `fetch('/api/...')` 调用 | Tauri 前端用 `invoke()` 而非 HTTP | 将 `fetch(...)` 替换为 `import { invoke } from '@tauri-apps/api/core'` |
+| `lib/use-app-state.ts` 中的 `localStorage` 调用 | Tauri 前端用 `invoke()` 访问 Rust 数据层，而非浏览器 localStorage | 将 `localStorage` 替换为 `invoke()` 调用，或在 Rust 侧用 `tauri-plugin-store` 持久化 |
+| `scripts/serve.mjs` + `next.config.mjs`（output: export） | Tauri 自带 WebView，不再需要静态文件服务器或 Next.js 构建 | 删除 `scripts/` 目录，移除 `next.config.mjs` 的 `output: 'export'` |
+| **（无 `lib/db.ts`）** | 已移除，无需迁移 | — |
 
 ### 需要新增的文件
 
@@ -187,16 +157,13 @@ pnpm lint       # 运行 ESLint
 ### 关键流程变化
 
 ```diff
-- Node.js 服务器 + HTTP API + better-sqlite3
-+ Tauri (Rust) + IPC invoke() + rusqlite
+- pnpm dev → Node.js 静态服务器启动 → 自动打开浏览器
++ 直接双击 Tauri .app → 弹出独立窗口（WebView 内渲染）
 
-- 双击 Swift .app → 启动服务器 → 打开浏览器
-+ 直接双击 Tauri 生成的 .app → 弹出独立窗口（WebView 内渲染）
-
-- 关浏览器 = 服务器仍在后台（需手动杀）
+- 关浏览器 = 服务器仍在后台（需手动 pkill）
 + 关窗口 = 进程自动退出
 
-- 发朋友需对方装 Node.js + pnpm
+- 发朋友需对方装 Node.js + pnpm + pnpm build
 + 直接给 .app，任何人双击即用
 ```
 
@@ -217,4 +184,4 @@ pnpm tauri init                 # 初始化 src-tauri/ 目录
 
 | 当前 | Tauri 后 |
 |------|---------|
-| `data/calendar.db` | `~/Library/Application Support/com.calendar.app/calendar.db` |
+| 浏览器 `localStorage` | `~/Library/Application Support/com.calendar.app/calendar.db`（或 `tauri-plugin-store` 的 JSON 文件） |

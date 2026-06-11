@@ -19,5 +19,3 @@ data/
 *.tsbuildinfo
 next-env.d.ts
 
-# macOS 双击启动器（个人快捷方式，仅本机可用）
-日程安排.app
