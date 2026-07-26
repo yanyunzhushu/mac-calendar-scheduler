@@ -12,13 +12,26 @@ pnpm lint       # 运行 ESLint
 pkill -f "scripts/serve"  # 手动停止服务器
 ```
 
-> **注意**：首次运行 `pnpm install` 后，需要在 `package.json` 中配置：
-> ```json
-> "pnpm": { "onlyBuiltDependencies": ["better-sqlite3"] }
-> ```
-> 然后 `pnpm approve-builds better-sqlite3`，否则 `better-sqlite3` 不会编译。
-
 未配置测试框架。应用纯客户端运行，无需后端服务。
+
+## 测试数据
+
+**应用启动时没有任何预加载示例任务。** 所有任务数据通过以下两种方式之一创建：
+
+### 方式 A：浏览器控制台脚本（推荐）
+Claude Code 在对话中生成脚本 → 粘贴到浏览器 F12 控制台执行 → 数据写入 localStorage → 页面自动刷新显示。
+
+清空数据：
+```js
+localStorage.removeItem('calendar-app-state');
+location.reload();
+```
+
+### 方式 B：临时硬编码注入（当用户无法/不便操作控制台时）
+1. Claude 在 `use-app-state.ts` 的 `loadState()` 之后写入一条 `localStorage.setItem(...)` 硬编码数据
+2. `pnpm build` → 杀掉旧服务器 → `pnpm dev`
+3. 用户告知"已刷新"后，Claude **立即回退硬编码代码** → 再次 `pnpm build` → 重启服务器
+4. 用户再次刷新，代码恢复空白，但数据已留在 localStorage 中保留
 
 ## 项目概述
 
@@ -48,10 +61,10 @@ pkill -f "scripts/serve"  # 手动停止服务器
 ### 状态层 (`lib/`)
 
 - **`types.ts`** — 任务类型层次结构（按 `type` 区分的联合类型）：
-  - `RecurringTask`（周期任务）— 按每天/每周/每月/自定义间隔重复，可设结束条件
-  - `EbbinghausTask`（艾宾浩斯复习）— 按可配置的天数间隔序列进行间隔重复
-  - `ProgressTask`（持续进度）— 滚动截止日：每次完成后截止日向前推进 N 天
-  - `Holiday` — 假期区间，持续进度任务在此期间暂停（截止日自动顺延）
+  - `RecurringTask`（周期任务）— 按每天/每周/每月/自定义间隔重复，可设结束条件；支持 `countingMode`（计数模式：每个发生日可多次完成并记录次数）
+  - `EbbinghausTask`（复习任务）— 按可配置的天数间隔序列进行间隔重复，默认 `0,1,2,4,7,15,30,60`
+  - `ProgressTask`（持续进度）— 滚动截止日：每次完成后截止日向前推进。支持**步骤列表**（`steps: ProgressStep[]`，每个步骤有 `name` 和独立 `interval`），步骤按顺序循环，完成时记录步骤索引到 `stepProgress: Record<DateKey, number>`
+  - `Holiday` — 假期区间，假期模式开启时周期任务与持续进度任务在此期间隐藏（见下文「假期模式」）
   - `TaskInstance` — 任务在特定日期的已解析实例，包含计算得出的 `InstanceStatus`（待完成/已完成/已错过/未来/假期暂停）
   - `AppState` — 完整持久化状态结构（`tasks[]`, `holidays[]`, `holidayModeEnabled`）
 
@@ -60,7 +73,8 @@ pkill -f "scripts/serve"  # 手动停止服务器
 - **`task-engine.ts`** — 纯函数，无 React。核心逻辑：
   - `generateRecurringInstances()` — 按 `freq`/`interval` 从 `startDate` 开始遍历，遵守结束条件，在范围内生成实例
   - `generateEbbinghausInstances()` — 每个间隔序列项生成一个实例，可选受结束条件限制
-  - `generateProgressInstances()` — 模拟滚动截止日：每次完成将下一个截止日向前推进；`computeProgressCycles()` 重建完整时间线
+  - `generateProgressInstances()` — 累积进度条模型：每完成一个步骤，进度条增长该步骤的 interval 天数；`computeProgressBarEnd()` 计算进度条覆盖终点；`getNextStep()` 获取下个待执行的步骤对象（`.name` 为步骤名）。今天无完成记录时生成一个待完成实例（任务名带步骤名）；今天有完成记录时并入已完成实例展示（meta 追加"下一步: 步骤名"），不再额外生成待完成实例；过去未完成的日期不产生实例
+  - 支持子步骤：实例的 `taskName` 在待完成日动态设为 `"任务名 (步骤名)"`，逾期/未来日只显示任务名
   - `buildInstanceMap()` — 主要入口：给定任务+假期+范围，返回 `Record<DateKey, TaskInstance[]>`
   - 假期感知：`findHoliday()` / `adjustForHoliday()` — 进度任务的截止日自动顺延过假期
 
@@ -70,7 +84,7 @@ pkill -f "scripts/serve"  # 手动停止服务器
   - 每次状态变化自动保存到 localStorage
   - `createId()` 生成短 ID（`Math.random` + `Date.now` 混合）
 
-- **`use-app-state.ts`** — React 钩子：（见上方 `lib/` 章节）
+- **`utils.ts`** — `cn()` 工具函数，整合 `clsx` 和 `tailwind-merge`，用于条件性 CSS 类名拼接。
 
 - **`status-visuals.ts`** — 无状态辅助函数，将 `InstanceStatus`/`TaskType` 映射为 CSS 变量颜色、标签和不透明度规则。
 
@@ -87,9 +101,23 @@ pkill -f "scripts/serve"  # 手动停止服务器
     - `WeekView` — 7 列布局，每天显示任务名称标签
     - `DayView` — 全天任务列表，使用 `InstanceItem` 卡片
   - `DaySidebar` — 320px 右侧边栏，显示选中日期的任务（月/周视图下显示）
-  - `TaskForm` — 模态对话框：创建/编辑任务，包含类型专属字段（重复频率、艾宾浩斯间隔序列、进度间隔、结束条件）
+  - `TaskForm` — 模态对话框：创建/编辑任务，包含类型专属字段（重复频率、复习间隔序列 + **间隔预览表**、持续进度 **步骤列表** 每步独立推进天数、结束条件）。任务名称带 `*` 标记，未填名称时弹出淡出提示（2s 自动消失）。
   - `HolidayDialog` — 模态对话框：管理假期日期区间 + 启用/禁用开关
-  - `Legend` — 任务类型和状态的图例说明
+  - `TrashDialog` — 回收站对话框：查看和恢复已删除的任务
+  - `Legend` — 任务类型和状态的图例说明。聚焦进度任务时，会额外显示任务名称和"下一步：步骤名"标签
+
+> **任务视图**（Task View / Focused View）：指用户点击任务卡片上的"在日历上查看"按钮后，聚焦单个任务的模式。
+> - 激活后，月/周视图中仅高亮显示该任务出现的日期（非进度任务）或整个进度条范围（进度任务），其他日期半透明隐藏
+> - 通过头部"退出任务视图"按钮或再次点击同一任务按钮退出
+> - 逻辑位于 `month-view.tsx` / `week-view.tsx` 中 `focusedTaskId` / `focusedInstanceMap` / `focusedProgress` 相关条件渲染
+>
+> **进度任务颜色规则**（聚焦进度任务时，通过 `focusedProgress` 计算）：
+> - 从 `startDate` 到 `barEnd`（进度条覆盖终点，即 `computeProgressBarEnd()` 的结果）→ 绿色进度条覆盖
+> - `barEnd` 之后（不含）到今天（含）→ 红色（尚未覆盖的逾期区域）
+> - 今天之后的日期 → 无特殊染色（未来）
+> - 每个步骤独立控制推进天数：`steps[n].interval`
+> - 带步骤的任务：今天待完成实例显示 `"任务名 (步骤名)"`，过去/未来日期不生成实例
+> - 步骤按顺序循环：`steps[completedCount % steps.length]`
 
 ### UI 组件库 (`components/ui/`)
 
@@ -106,7 +134,7 @@ pkill -f "scripts/serve"  # 手动停止服务器
 
 ### 假期模式
 
-当 `holidayModeEnabled` 为 true 时，`activeHolidays` 非空，进度任务在假期期间跳过实例生成，截止日自动顺延。周期任务和艾宾浩斯复习不受影响。
+当 `holidayModeEnabled` 为 true 时，`activeHolidays` 非空，落在假期区间内的周期任务与持续进度任务实例在生成层被过滤（`generateInstancesForTask`），所有视图（月/周/日/侧边栏）不显示，周期任务假期内也不计 missed；日常任务与复习任务不受影响。隐藏仅为显示层行为，不改动任何任务数据与调度，假期结束后自动恢复显示。
 
 ## 约定
 
@@ -174,7 +202,7 @@ pnpm add -D @tauri-apps/cli    # 安装 Tauri CLI
 pnpm tauri init                 # 初始化 src-tauri/ 目录
 # 然后：
 # 1. 在 src-tauri/Cargo.toml 添加 rusqlite、serde 依赖
-# 2. 用 Rust 重写 lib/db.ts → src-tauri/src/db.rs + commands.rs
+# 2. 在 src-tauri/src/ 中创建 db.rs（SQLite 连接）+ commands.rs（CRUD 命令）
 # 3. 修改 use-app-state.ts：fetch → invoke
 # 4. pnpm tauri dev（开发模式调试）
 # 5. pnpm tauri build（打包发布）
@@ -185,3 +213,17 @@ pnpm tauri init                 # 初始化 src-tauri/ 目录
 | 当前 | Tauri 后 |
 |------|---------|
 | 浏览器 `localStorage` | `~/Library/Application Support/com.calendar.app/calendar.db`（或 `tauri-plugin-store` 的 JSON 文件） |
+
+## 文档索引
+
+详细文档见 `docs/` 目录，按需求类型查找：
+
+| 需求 | 文档位置 |
+|------|---------|
+| 快速启动、安装配置 | `docs/getting-started/` |
+| 用户操作指南（基础/高级/排错） | `docs/user-guide/` |
+| 架构设计、技术决策记录 | `docs/architecture/` |
+| 代码规范、测试、部署 | `docs/development/` |
+| 模块详细规格（任务类型/视图/假期/持久化） | `docs/specifications/` |
+| API 文档 | `docs/api/`（当前无后端，仅占位） |
+| 运维手册（监控/备份/安全） | `docs/operations/`（当前无运维，仅占位） |

@@ -5,14 +5,17 @@ import { AlertTriangle } from 'lucide-react'
 import {
   addDays,
   addMonths,
+  compareKey,
+  fromKey,
   getMonthGrid,
   getWeekDays,
   todayKey,
   type DateKey,
 } from '@/lib/date-utils'
 import { useAppState } from '@/lib/use-app-state'
-import { buildInstanceMap, countTodayMissed } from '@/lib/task-engine'
-import type { Holiday, Task } from '@/lib/types'
+import { buildInstanceMap, computeProgressBarEnd, countTodayMissed } from '@/lib/task-engine'
+import type { Holiday, ProgressTask, Task } from '@/lib/types'
+import { TASK_TYPE_LABEL } from '@/lib/types'
 import { CalendarHeader, type ViewMode } from './calendar-header'
 import { MonthView } from './month-view'
 import { WeekView } from './week-view'
@@ -20,7 +23,8 @@ import { DayView } from './day-view'
 import { DaySidebar } from './day-sidebar'
 import { TaskForm } from './task-form'
 import { HolidayDialog } from './holiday-dialog'
-import { Legend } from './legend'
+import { TrashDialog } from './trash-dialog'
+
 
 export function CalendarApp() {
   const {
@@ -29,11 +33,17 @@ export function CalendarApp() {
     addTask,
     updateTask,
     deleteTask,
+    restoreTask,
+    permanentlyDeleteTask,
+    emptyTrash,
     completeInstance,
     uncompleteInstance,
+    togglePause,
     setHolidayModeEnabled,
     addHoliday,
     deleteHoliday,
+    createTheme,
+    deleteTheme,
   } = useAppState()
 
   const today = todayKey()
@@ -43,6 +53,8 @@ export function CalendarApp() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [holidayOpen, setHolidayOpen] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
 
   // 仅在假期模式开启时，假期才生效
   const activeHolidays: Holiday[] = state.holidayModeEnabled ? state.holidays : []
@@ -76,9 +88,42 @@ export function CalendarApp() {
     [state.tasks, activeHolidays, today],
   )
 
+  // 任务视图：聚焦单个任务
+  const focusedTask = focusedTaskId ? state.tasks.find((t) => t.id === focusedTaskId) ?? null : null
+  const focusedInstanceMap = useMemo(() => {
+    if (!focusedTask) return {}
+    return buildInstanceMap([focusedTask], activeHolidays, rangeStart, rangeEnd, today)
+  }, [focusedTask, activeHolidays, rangeStart, rangeEnd, today])
+
+  const focusedProgress = useMemo(() => {
+    if (!focusedTask || focusedTask.type !== 'progress') return null
+    const pt = focusedTask as ProgressTask
+    let barEnd = computeProgressBarEnd(pt)
+    // 停止推进后，进度条截至今天，不展示未来覆盖区域
+    if (pt.paused && compareKey(barEnd, today) > 0) {
+      barEnd = today
+    }
+    return {
+      startDate: pt.startDate,
+      barEnd,
+      paused: pt.paused,
+    }
+  }, [focusedTask, activeHolidays, today])
+
   function handleSelect(key: DateKey) {
     setSelected(key)
-    if (view === 'day') setAnchor(key)
+    if (view === 'day') {
+      setAnchor(key)
+    } else if (view === 'month') {
+      const clickedDate = fromKey(key)
+      const anchorDate = fromKey(anchor)
+      if (
+        clickedDate.getMonth() !== anchorDate.getMonth() ||
+        clickedDate.getFullYear() !== anchorDate.getFullYear()
+      ) {
+        setAnchor(key)
+      }
+    }
   }
 
   function navigate(dir: -1 | 1) {
@@ -96,6 +141,11 @@ export function CalendarApp() {
     setSelected(today)
   }
 
+  function handleJump(key: DateKey) {
+    setAnchor(key)
+    setSelected(key)
+  }
+
   function openCreate() {
     setEditingTask(null)
     setFormOpen(true)
@@ -105,6 +155,35 @@ export function CalendarApp() {
     const task = state.tasks.find((t) => t.id === taskId) ?? null
     setEditingTask(task)
     setFormOpen(true)
+  }
+
+  function handleDelete(taskId: string) {
+    // 删除任务时，如果该任务正在被聚焦，自动退出任务视图
+    if (focusedTaskId) {
+      if (focusedTaskId === taskId) {
+        setFocusedTaskId(null)
+      } else {
+        const task = state.tasks.find((t) => t.id === taskId)
+        const focused = state.tasks.find((t) => t.id === focusedTaskId)
+        if (task?.groupId && focused?.groupId === task.groupId) {
+          setFocusedTaskId(null)
+        }
+      }
+    }
+    deleteTask(taskId)
+  }
+
+  function focusTask(taskId: string) {
+    if (focusedTaskId === taskId) {
+      setFocusedTaskId(null)
+    } else {
+      setFocusedTaskId(taskId)
+      setView('month')
+    }
+  }
+
+  function clearFocus() {
+    setFocusedTaskId(null)
   }
 
   if (!loaded) {
@@ -120,23 +199,18 @@ export function CalendarApp() {
       <CalendarHeader
         view={view}
         anchor={anchor}
+        selected={selected}
         holidayEnabled={state.holidayModeEnabled}
+        trashCount={state.trash.length}
         onViewChange={setView}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}
         onToday={goToday}
+        onJump={handleJump}
         onOpenHoliday={() => setHolidayOpen(true)}
+        onOpenTrash={() => setTrashOpen(true)}
         onCreate={openCreate}
       />
-
-      {todayMissed.length > 0 && (
-        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>
-            你有 <strong>{todayMissed.length}</strong> 项任务已错过未完成，请尽快处理。
-          </span>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
@@ -149,6 +223,9 @@ export function CalendarApp() {
                 instanceMap={instanceMap}
                 holidays={activeHolidays}
                 onSelect={handleSelect}
+                focusedTaskId={focusedTaskId}
+                focusedInstanceMap={focusedInstanceMap}
+                focusedProgress={focusedProgress}
               />
             )}
             {view === 'week' && (
@@ -159,6 +236,9 @@ export function CalendarApp() {
                 instanceMap={instanceMap}
                 holidays={activeHolidays}
                 onSelect={handleSelect}
+                focusedTaskId={focusedTaskId}
+                focusedInstanceMap={focusedInstanceMap}
+                focusedProgress={focusedProgress}
               />
             )}
             {view === 'day' && (
@@ -166,14 +246,26 @@ export function CalendarApp() {
                 selected={selected}
                 today={today}
                 instances={selectedInstances}
+                tasks={state.tasks}
                 holidays={activeHolidays}
                 onComplete={completeInstance}
                 onUncomplete={uncompleteInstance}
+                onUndoSkip={uncompleteInstance}
                 onOpenTask={openEdit}
+                onFocusTask={focusTask}
+                onTogglePause={togglePause}
+                focusedTaskId={focusedTaskId}
               />
             )}
           </div>
-          <Legend />
+          {todayMissed.length > 0 && (
+            <div className="flex items-center gap-1.5 border-t border-red-200/50 bg-red-50/60 px-5 py-2 text-xs text-red-600">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>
+                你有 <strong>{todayMissed.length}</strong> 项任务已错过未完成
+              </span>
+            </div>
+          )}
         </main>
 
         {view !== 'day' && (
@@ -181,10 +273,16 @@ export function CalendarApp() {
             selected={selected}
             today={today}
             instances={selectedInstances}
+            tasks={state.tasks}
             holidays={activeHolidays}
             onComplete={completeInstance}
             onUncomplete={uncompleteInstance}
+            onUndoSkip={uncompleteInstance}
             onOpenTask={openEdit}
+            onFocusTask={focusTask}
+            onTogglePause={togglePause}
+            focusedTaskId={focusedTaskId}
+            onClearFocus={clearFocus}
             onCreate={openCreate}
           />
         )}
@@ -197,7 +295,11 @@ export function CalendarApp() {
         editingTask={editingTask}
         onSubmit={addTask}
         onUpdate={updateTask}
-        onDelete={deleteTask}
+        onDelete={handleDelete}
+        onTogglePause={togglePause}
+        themes={state.themes}
+        onCreateTheme={createTheme}
+        onDeleteTheme={deleteTheme}
       />
 
       <HolidayDialog
@@ -208,6 +310,15 @@ export function CalendarApp() {
         onToggleEnabled={setHolidayModeEnabled}
         onAdd={addHoliday}
         onDelete={deleteHoliday}
+      />
+
+      <TrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        trash={state.trash}
+        onRestore={restoreTask}
+        onPermanentDelete={permanentlyDeleteTask}
+        onEmptyTrash={emptyTrash}
       />
     </div>
   )

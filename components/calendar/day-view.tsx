@@ -1,7 +1,7 @@
 'use client'
 
 import { formatLong, type DateKey } from '@/lib/date-utils'
-import type { Holiday, TaskInstance } from '@/lib/types'
+import type { Holiday, Task, TaskInstance } from '@/lib/types'
 import { findHoliday } from '@/lib/task-engine'
 import { InstanceItem } from './instance-item'
 
@@ -9,20 +9,30 @@ interface DayViewProps {
   selected: DateKey
   today: DateKey
   instances: TaskInstance[]
+  tasks: Task[]
   holidays: Holiday[]
   onComplete: (taskId: string, date: DateKey) => void
   onUncomplete: (taskId: string, date: DateKey) => void
+  onUndoSkip?: (taskId: string, undoDate: string) => void
   onOpenTask: (taskId: string) => void
+  onFocusTask?: (taskId: string) => void
+  onTogglePause?: (taskId: string) => void
+  focusedTaskId?: string | null
 }
 
 export function DayView({
   selected,
   today,
   instances,
+  tasks,
   holidays,
   onComplete,
   onUncomplete,
+  onUndoSkip,
   onOpenTask,
+  onFocusTask,
+  onTogglePause,
+  focusedTaskId,
 }: DayViewProps) {
   const holiday = findHoliday(selected, holidays)
   return (
@@ -37,7 +47,7 @@ export function DayView({
       </div>
       {holiday && (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          假期期间，持续进度任务暂停推进
+          假期期间，周期任务与持续进度任务不显示
         </div>
       )}
       {instances.length === 0 ? (
@@ -47,9 +57,15 @@ export function DayView({
           <InstanceItem
             key={`${inst.taskId}-${i}`}
             inst={inst}
+            task={tasks.find((t) => t.id === inst.taskId)}
             onComplete={() => onComplete(inst.taskId, inst.date)}
             onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
+            onUndoSkip={onUndoSkip ? (undoDate) => onUndoSkip(inst.taskId, undoDate) : undefined}
             onOpenTask={() => onOpenTask(inst.taskId)}
+            onFocusTask={onFocusTask}
+            onTogglePause={onTogglePause}
+            isFocused={focusedTaskId === inst.taskId}
+            focusedTaskId={focusedTaskId}
           />
         ))
       )}
