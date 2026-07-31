@@ -101,14 +101,34 @@ async function isHealthy() {
   }
 }
 
-// ---------- 自动打开浏览器 ----------
+// ---------- 跨平台工具 ----------
+
+function isWindows() {
+  return process.platform === 'win32'
+}
 
 function openBrowser(url) {
   if (process.env.CI || process.env.OPEN_BROWSER === 'false') return
   try {
-    execSync(`open "${url}"`, { stdio: 'ignore' })
+    const cmd = isWindows() ? `start "" "${url}"` : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`
+    execSync(cmd, { stdio: 'ignore' })
   } catch {
-    /* 忽略（无 open 命令时静默） */
+    /* 忽略（无对应命令时静默） */
+  }
+}
+
+function killPort(port) {
+  try {
+    if (isWindows()) {
+      // Windows: netstat 查 PID → taskkill
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' })
+      const pid = out.split('\n')[0]?.trim().split(/\s+/).pop()
+      if (pid && pid !== '0') execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' })
+    } else {
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
+    }
+  } catch {
+    /* 忽略 */
   }
 }
 
@@ -136,11 +156,7 @@ async function start() {
 
   // 僵尸进程 → 杀掉重启
   console.log(`端口 ${PORT} 被僵尸进程占用，正在释放…`)
-  try {
-    execSync(`lsof -ti:${PORT} | xargs kill -9 2>/dev/null`)
-  } catch {
-    /* 忽略 */
-  }
+  killPort(PORT)
   // 等待端口释放
   for (let i = 0; i < 10; i++) {
     if (await tryListen(PORT)) break
