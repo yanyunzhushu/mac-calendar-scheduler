@@ -97,17 +97,25 @@ export function MonthView({
                 'hover:bg-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 !inMonth && 'bg-muted/60 text-muted-foreground/50',
                 isSelected && 'bg-accent',
-                // 非进度任务的原有聚焦染色（实例级）
-                !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && 'bg-emerald-50',
-                !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && 'bg-red-50',
-                !focusedProgress && focusedTaskId && hasFocused && !isFuture && 'ring-2 ring-inset',
-                !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && 'ring-emerald-400',
-                !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && 'ring-red-400',
-                !focusedProgress && focusedTaskId && hasFocused && isFuture && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
-                // 进度任务进度条染色
-                barColor === 'green' && 'bg-emerald-50 ring-2 ring-inset ring-emerald-400',
-                barColor === 'red' && 'bg-red-50 ring-2 ring-inset ring-red-400',
-                barColor === 'gray' && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
+                // 非进度任务的原有聚焦染色（实例级）— 当月使用完整饱和度
+                !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-50',
+                !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-50',
+                !focusedProgress && focusedTaskId && hasFocused && !isFuture && inMonth && 'ring-2 ring-inset',
+                !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'ring-emerald-400',
+                !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && inMonth && 'ring-red-400',
+                !focusedProgress && focusedTaskId && hasFocused && isFuture && inMonth && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
+                // 非进度任务聚焦染色 — 相邻月份降低饱和度以便区分
+                !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && !inMonth && 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400/40',
+                !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && !inMonth && 'bg-red-50/50 ring-2 ring-inset ring-red-400/40',
+                !focusedProgress && focusedTaskId && hasFocused && isFuture && !inMonth && 'bg-gray-50/50 ring-2 ring-inset ring-gray-300/40',
+                // 进度任务进度条染色 — 当月使用完整饱和度
+                barColor === 'green' && inMonth && 'bg-emerald-50 ring-2 ring-inset ring-emerald-400',
+                barColor === 'red' && inMonth && 'bg-red-50 ring-2 ring-inset ring-red-400',
+                barColor === 'gray' && inMonth && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
+                // 进度任务进度条染色 — 相邻月份降低饱和度以便区分
+                barColor === 'green' && !inMonth && 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400/40',
+                barColor === 'red' && !inMonth && 'bg-red-50/50 ring-2 ring-inset ring-red-400/40',
+                barColor === 'gray' && !inMonth && 'bg-gray-50/50 ring-2 ring-inset ring-gray-300/40',
               )}
             >
               <div className="flex w-full items-center justify-between">
@@ -116,14 +124,22 @@ export function MonthView({
                     'flex h-6 w-6 items-center justify-center rounded-full text-sm tabular-nums',
                     isToday && 'bg-primary font-semibold text-primary-foreground',
                     !isToday && inMonth && 'font-medium',
-                    // 非进度任务日期数字
-                    !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && 'bg-emerald-200 text-emerald-900',
-                    !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && 'bg-red-200 text-red-900',
-                    !focusedProgress && focusedTaskId && hasFocused && isFuture && 'bg-gray-200 text-gray-500',
-                    // 进度任务日期数字
-                    barColor === 'green' && 'bg-emerald-200 text-emerald-900',
-                    barColor === 'red' && 'bg-red-200 text-red-900',
-                    barColor === 'gray' && 'bg-gray-200 text-gray-500',
+                    // 非进度任务日期数字 — 当月
+                    !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-200 text-emerald-900',
+                    !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-200 text-red-900',
+                    !focusedProgress && focusedTaskId && hasFocused && isFuture && inMonth && 'bg-gray-200 text-gray-500',
+                    // 进度任务日期数字 — 当月
+                    barColor === 'green' && inMonth && 'bg-emerald-200 text-emerald-900',
+                    barColor === 'red' && inMonth && 'bg-red-200 text-red-900',
+                    barColor === 'gray' && inMonth && 'bg-gray-200 text-gray-500',
+                    // 非进度任务日期数字 — 相邻月份降低饱和度
+                    !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && !inMonth && 'bg-emerald-200/60 text-emerald-900/70',
+                    !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && !inMonth && 'bg-red-200/60 text-red-900/70',
+                    !focusedProgress && focusedTaskId && hasFocused && isFuture && !inMonth && 'bg-gray-200/60 text-gray-500/70',
+                    // 进度任务日期数字 — 相邻月份降低饱和度
+                    barColor === 'green' && !inMonth && 'bg-emerald-200/60 text-emerald-900/70',
+                    barColor === 'red' && !inMonth && 'bg-red-200/60 text-red-900/70',
+                    barColor === 'gray' && !inMonth && 'bg-gray-200/60 text-gray-500/70',
                   )}
                 >
                   {d.getDate()}

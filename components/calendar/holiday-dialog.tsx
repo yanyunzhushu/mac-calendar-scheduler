@@ -51,7 +51,7 @@ export function HolidayDialog({
         <DialogHeader>
           <DialogTitle>假期模式</DialogTitle>
           <DialogDescription>
-            假期期间，持续进度任务暂停推进，截止日自动顺延到假期结束后。其他任务类型不受影响。
+            假期模式开启后，周期任务与持续进度任务在假期区间内将隐藏，假期结束后自动恢复显示。日常任务与复习任务不受影响。
           </DialogDescription>
         </DialogHeader>
 

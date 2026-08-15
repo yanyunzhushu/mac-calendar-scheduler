@@ -71,7 +71,7 @@ location.reload();
 - **`date-utils.ts`** — 所有日期使用 `"YYYY-MM-DD"` 字符串键（`DateKey`）。纯函数工具：`toKey`/`fromKey`、`addDays`、`diffDays`、`compareKey`、`getMonthGrid`（月视图 6×7 网格）、`getWeekDays`（周日起始周）、`formatMonthTitle`/`formatLong` 等。
 
 - **`task-engine.ts`** — 纯函数，无 React。核心逻辑：
-  - `generateRecurringInstances()` — 按 `freq`/`interval` 从 `startDate` 开始遍历，遵守结束条件，在范围内生成实例
+  - `generateRecurringInstances()` — 按 `freq`/`interval` 从 `startDate` 开始遍历，遵守结束条件；不生成今天之后的实例（若 `startDate` 在未来，则仅在该日期落在视图范围内时显示一个灰色的 `future` 标记），假期模式下被假期区间覆盖的实例不生成
   - `generateEbbinghausInstances()` — 每个间隔序列项生成一个实例，可选受结束条件限制
   - `generateProgressInstances()` — 累积进度条模型：每完成一个步骤，进度条增长该步骤的 interval 天数；`computeProgressBarEnd()` 计算进度条覆盖终点；`getNextStep()` 获取下个待执行的步骤对象（`.name` 为步骤名）。今天无完成记录时生成一个待完成实例（任务名带步骤名）；今天有完成记录时并入已完成实例展示（meta 追加"下一步: 步骤名"），不再额外生成待完成实例；过去未完成的日期不产生实例
   - 支持子步骤：实例的 `taskName` 在待完成日动态设为 `"任务名 (步骤名)"`，逾期/未来日只显示任务名
@@ -101,7 +101,8 @@ location.reload();
     - `WeekView` — 7 列布局，每天显示任务名称标签
     - `DayView` — 全天任务列表，使用 `InstanceItem` 卡片
   - `DaySidebar` — 320px 右侧边栏，显示选中日期的任务（月/周视图下显示）
-  - `TaskForm` — 模态对话框：创建/编辑任务，包含类型专属字段（重复频率、复习间隔序列 + **间隔预览表**、持续进度 **步骤列表** 每步独立推进天数、结束条件）。任务名称带 `*` 标记，未填名称时弹出淡出提示（2s 自动消失）。
+  - `TaskForm` — 模态对话框：创建/编辑四种任务类型，含类型专属字段（执行日期、重复频率、复习间隔序列 + **间隔预览表**、持续进度 **步骤列表** 每步独立推进天数、结束条件、计数模式开关、学习主题选择/创建）。持续进度任务的步骤编辑由 `ProgressStepEditor` 处理：有完成记录后，步骤结构（增删步骤、起始步骤、模式切换）被锁定，但步骤名称和推进天数仍可修改；推进天数的修改会基于当前 `steps.interval` 实时重算进度条覆盖范围。任务名称必填，未填时弹出自动消失的提示（toast）。
+  - `ProgressStepEditor` — `TaskForm` 的进度任务步骤编辑器子组件，负责简洁/详细模式切换、步骤增删、名称与推进天数编辑，以及有完成记录时的结构锁定与影响提示。
   - `HolidayDialog` — 模态对话框：管理假期日期区间 + 启用/禁用开关
   - `TrashDialog` — 回收站对话框：查看和恢复已删除的任务
   - `Legend` — 任务类型和状态的图例说明。聚焦进度任务时，会额外显示任务名称和"下一步：步骤名"标签

@@ -82,9 +82,26 @@ export function generateRecurringInstances(
   while (guard < maxGuard) {
     guard++
     if (recurringReachedEnd(task.end, idx, cur)) break
-    // 终止后不再生成未来实例
-    if (task.paused && compareKey(cur, today) > 0) break
     if (compareKey(cur, rangeEnd) > 0) break
+
+    // 今天之后不再展示，但允许显示第一个未来发生日（即 startDate 在未来时）作为灰色标记，
+    // 与持续进度任务的行为保持一致。若 startDate 已在今天或之前，则不应在后续范围里补出未来标记。
+    if (compareKey(cur, today) > 0) {
+      if (out.length === 0 && idx === 0 && compareKey(cur, rangeStart) >= 0) {
+        const counting = !!task.countingMode
+        const completed = !!task.completions[cur]
+        out.push({
+          taskId: task.id,
+          taskName: task.name,
+          taskType: 'recurring',
+          date: cur,
+          status: 'future',
+          actionable: false,
+          count: counting ? (task.completions[cur] ?? 0) : undefined,
+        })
+      }
+      break
+    }
 
     if (compareKey(cur, rangeStart) >= 0) {
       const counting = !!task.countingMode
@@ -184,7 +201,14 @@ export function generateEbbinghausInstances(
 
 /**
  * 计算进度条的结束日期（用于聚焦视图染色）。
- * 返回最后一次有完成记录的日期（或 startDate 如果从未完成）。
+ *
+ * 重要语义：本函数基于任务**当前**的 `steps[i].interval` 实时重算。
+ * 因此，如果用户在已有完成记录后修改了某一步的推进天数，历史完成记录
+ * 所覆盖的进度条范围也会随之变化（追溯调整）。这是当前引擎的设计选择，
+ * 而非 bug；若未来需要"修改 interval 不影响历史覆盖范围"，则需引入完成
+ * 时的 interval 快照机制。
+ *
+ * 返回最后一次有完成记录的日期（或 startDate 前一天如果从未完成）。
  */
 export function computeProgressBarEnd(task: ProgressTask): DateKey {
   const dc = task.dailyCompletions ?? {}
@@ -286,7 +310,8 @@ export function generateProgressInstances(
   const start = compareKey(rangeStart, task.startDate) > 0 ? rangeStart : task.startDate
   if (compareKey(start, effectiveEnd) > 0) return out // 无可显示范围
 
-  // 计算进度条覆盖终点（仅计入实际完成，startStepIndex 不产生预填进度）
+  // 计算进度条覆盖终点（仅计入实际完成，startStepIndex 不产生预填进度）。
+  // 注意：此处读取的是当前 steps 的 interval，因此外部修改 interval 后会实时影响覆盖范围。
   let barTotalCompletions = 0
   for (const key of completionDates) {
     barTotalCompletions += dc[key] ?? 0

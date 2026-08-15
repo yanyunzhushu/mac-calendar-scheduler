@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,7 @@ import type {
 } from '@/lib/types'
 import { TASK_TYPE_LABEL } from '@/lib/types'
 import { typeColor } from '@/lib/status-visuals'
+import { ProgressStepEditor } from './progress-step-editor'
 
 interface TaskFormProps {
   open: boolean
@@ -263,15 +264,13 @@ export function TaskForm({
   const hasCompletions =
     editingTask?.type === 'progress' &&
     Object.values((editingTask as ProgressTask).dailyCompletions ?? {}).some((v) => (v ?? 0) > 0)
-  // 有完成记录时锁定步骤结构，防止映射错乱
-  const stepsLocked = editingTask?.type === 'progress' && hasCompletions
 
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] gap-0 overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          {editingTask && <DialogTitle>编辑任务</DialogTitle>}
+          <DialogTitle>{editingTask ? '编辑任务' : '新建任务'}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-5 py-4">
@@ -516,152 +515,18 @@ export function TaskForm({
           {/* 持续进度 */}
           {type === 'progress' && (
             <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
-              {!hasSteps ? (
-                /* 简洁模式：每完成一次推进固定天数 */
-                <div className="flex items-center gap-2">
-                  <Label className="shrink-0 text-sm">每完成一次推进</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    className="h-8 w-20"
-                    value={progressInterval}
-                    onChange={(e) => setProgressInterval(parseInt(e.target.value, 10) || 1)}
-                  />
-                  <span className="text-sm text-muted-foreground">天</span>
-                </div>
-              ) : (
-                /* 详细步骤模式：表格 */
-                <div className="flex flex-col gap-2">
-                  <Label>任务步骤</Label>
-
-                  {/* 起始步骤选择（仅创建时显示，编辑时不可改） */}
-                  {!editingTask && steps.length > 1 && (
-                    <div className="flex items-center gap-2">
-                      <Label className="shrink-0 text-xs">起始步骤</Label>
-                      <Select value={String(startStepIndex)} onValueChange={(v) => setStartStepIndex(Number(v))}>
-                        <SelectTrigger className="h-8 w-48">
-                          <span className="truncate">
-                            {steps[startStepIndex]?.name || `步骤 ${startStepIndex + 1}`}
-                          </span>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {steps.map((s, i) => (
-                            <SelectItem key={i} value={String(i)}>
-                              {s.name || `步骤 ${i + 1}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="text-xs text-muted-foreground">
-                        将从所选步骤开始推进
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 有完成记录时锁定步骤结构 */}
-                  {stepsLocked && (
-                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      该任务已有完成记录，步骤结构已锁定（仅可修改名称和推进天数），增删步骤会导致历史进度映射错乱。
-                    </div>
-                  )}
-
-                  {/* 步骤表格 */}
-                  <div className="overflow-hidden rounded-md border">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          <th className="w-8 px-2 py-1.5" />
-                          <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">步骤名称</th>
-                          <th className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground">推进天数</th>
-                          {!stepsLocked && <th className="w-10 px-2 py-1.5" />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {steps.map((step, i) => (
-                          <tr key={i} className="border-t border-border">
-                            <td className="px-2 py-1 text-center tabular-nums text-muted-foreground">
-                              {i + 1}
-                            </td>
-                            <td className="px-1 py-1">
-                              <Input
-                                value={step.name}
-                                onChange={(e) => {
-                                  const next = [...steps]
-                                  next[i] = { ...next[i], name: e.target.value }
-                                  setSteps(next)
-                                }}
-                                placeholder={`步骤 ${i + 1}`}
-                                className="h-7 text-xs"
-                              />
-                            </td>
-                            <td className="px-1 py-1">
-                              <div className="flex items-center justify-end gap-1">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  className="h-7 w-14 text-xs text-right"
-                                  value={step.interval}
-                                  onChange={(e) => {
-                                    const next = [...steps]
-                                    next[i] = { ...next[i], interval: parseInt(e.target.value, 10) || 1 }
-                                    setSteps(next)
-                                  }}
-                                />
-                                <span className="text-muted-foreground">天</span>
-                              </div>
-                            </td>
-                            {!stepsLocked && (
-                            <td className="px-1 py-1 text-center">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-muted-foreground hover:text-red-500"
-                                onClick={() => {
-                                  const next = steps.filter((_, j) => j !== i)
-                                  if (next.length === 0) {
-                                    setHasSteps(false)
-                                  }
-                                  setSteps(next)
-                                }}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {!stepsLocked && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1 text-xs"
-                    onClick={() => setSteps([...steps, { name: '', interval: 1 }])}
-                  >
-                    <Plus className="h-3 w-3" />
-                    添加步骤
-                  </Button>
-                  )}
-                </div>
-              )}
-
-              {/* 切换按钮：点击后同时添加第一个步骤（有完成记录时锁定） */}
-              {!hasSteps && !stepsLocked && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1 text-xs self-start"
-                  onClick={() => {
-                    setHasSteps(true)
-                    setSteps([{ name: '', interval: progressInterval }])
-                  }}
-                >
-                  + 增添详细任务
-                </Button>
-              )}
+              <ProgressStepEditor
+                hasSteps={hasSteps}
+                onHasStepsChange={setHasSteps}
+                steps={steps}
+                onStepsChange={setSteps}
+                defaultInterval={progressInterval}
+                onDefaultIntervalChange={setProgressInterval}
+                startStepIndex={startStepIndex}
+                onStartStepIndexChange={setStartStepIndex}
+                isCreateMode={!editingTask}
+                hasCompletions={hasCompletions}
+              />
 
               <p className="text-xs text-muted-foreground">
                 每天生成一个待完成实例，完成后跳到下一步骤，期间未完成的天数自动标记为"未做"（黄色）。
