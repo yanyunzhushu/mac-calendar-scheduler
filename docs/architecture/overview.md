@@ -54,10 +54,11 @@ mac_calender/
 │   │   ├── day-sidebar.tsx  # 右侧边栏
 │   │   ├── dots-row.tsx     # 月视图圆点行
 │   │   ├── instance-item.tsx# 任务实例卡片
-│   │   ├── task-form.tsx    # 创建/编辑任务对话框
+│   │   ├── task-form.tsx           # 创建/编辑任务对话框
+│   │   ├── progress-step-editor.tsx # 持续进度任务步骤编辑器
 │   │   ├── holiday-dialog.tsx
-│   │   ├── trash-dialog.tsx # 回收站对话框
-│   │   └── legend.tsx       # 图例（当前未使用）
+│   │   ├── trash-dialog.tsx        # 回收站对话框
+│   │   └── legend.tsx              # 图例（当前未使用）
 │   └── ui/                  # shadcn/ui 组件 (11个)
 ├── lib/
 │   ├── types.ts             # 类型定义

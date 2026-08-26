@@ -82,6 +82,7 @@ export function DaySidebar({
                 key={`${inst.taskId}-${i}`}
                 inst={inst}
                 task={tasks.find((t) => t.id === inst.taskId)}
+                holidays={holidays}
                 onComplete={() => onComplete(inst.taskId, inst.date)}
                 onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
                 onUndoSkip={onUndoSkip ? (undoDate) => onUndoSkip(inst.taskId, undoDate) : undefined}

@@ -25,22 +25,6 @@ export function findHoliday(key: DateKey, holidays: Holiday[]): Holiday | undefi
   return holidays.find((h) => isWithin(key, h.start, h.end))
 }
 
-/**
- * 将一个截止日按假期顺延：若落在假期内，则推到假期结束后的第一天。
- * 处理连续假期的情况。
- */
-export function adjustForHoliday(key: DateKey, holidays: Holiday[]): DateKey {
-  let result = key
-  let guard = 0
-  while (guard < 50) {
-    const h = findHoliday(result, holidays)
-    if (!h) break
-    result = addDays(h.end, 1)
-    guard++
-  }
-  return result
-}
-
 /** 计算实例状态：基于日期与今天的关系 */
 function resolveStatus(date: DateKey, today: DateKey, completed: boolean): InstanceStatus {
   if (completed) return 'completed'
@@ -200,17 +184,43 @@ export function generateEbbinghausInstances(
 // ---------- 持续进度任务 ----------
 
 /**
- * 计算进度条的结束日期（用于聚焦视图染色）。
- *
- * 重要语义：本函数基于任务**当前**的 `steps[i].interval` 实时重算。
- * 因此，如果用户在已有完成记录后修改了某一步的推进天数，历史完成记录
- * 所覆盖的进度条范围也会随之变化（追溯调整）。这是当前引擎的设计选择，
- * 而非 bug；若未来需要"修改 interval 不影响历史覆盖范围"，则需引入完成
- * 时的 interval 快照机制。
- *
- * 返回最后一次有完成记录的日期（或 startDate 前一天如果从未完成）。
+ * 从 start 开始推进 activeDays 个有效日（跳过假期）。
+ * start 本身算作第 1 个有效日，返回最后一个有效日对应的日历日期。
  */
-export function computeProgressBarEnd(task: ProgressTask): DateKey {
+function addActiveDays(start: DateKey, activeDays: number, holidays: Holiday[]): DateKey {
+  let cur = start
+  let remaining = activeDays - 1
+  let guard = 0
+  const maxGuard = 10000
+  while (remaining > 0 && guard < maxGuard) {
+    guard++
+    cur = addDays(cur, 1)
+    if (!findHoliday(cur, holidays)) {
+      remaining--
+    }
+  }
+  return cur
+}
+
+/**
+ * 计算进度条的结束日期（用于聚焦视图染色与状态判定）。
+ *
+ * 重要语义：
+ * 1. 本函数基于任务**当前**的 `steps[i].interval` 实时重算。
+ *    因此，如果用户在已有完成记录后修改了某一步的推进天数，历史完成记录
+ *    所覆盖的进度条范围也会随之变化（追溯调整）。
+ * 2. 本函数也基于任务**当前**的 `startDate` 实时重算。
+ *    修改 `startDate` 会整体平移进度条覆盖范围（已完成步骤累计天数不变，
+ *    只是起点移动）。
+ * 3. 假期模式开启时，holidays 为生效假期；假期不消耗推进天数，进度条会
+ *    自动跨过假期向后延伸，保证覆盖的有效日数量不变。
+ *
+ * 这是当前引擎的设计选择，而非 bug；若未来需要"修改 interval/startDate
+ * 不影响历史覆盖范围"，则需引入完成时的快照机制。
+ *
+ * 返回最后一次有完成记录对应的覆盖终点（或 startDate 前一天如果从未完成）。
+ */
+export function computeProgressBarEnd(task: ProgressTask, holidays: Holiday[] = []): DateKey {
   const dc = task.dailyCompletions ?? {}
   const steps = task.steps?.length ? task.steps : [{ name: '', interval: task.defaultInterval ?? 1 }]
   const startIdx = task.startStepIndex ?? 0
@@ -233,8 +243,8 @@ export function computeProgressBarEnd(task: ProgressTask): DateKey {
     return addDays(task.startDate, -1)
   }
 
-  // barEnd = startDate + 累计天数 - 1（startDate 自身为第 1 天）
-  return addDays(task.startDate, totalDays - 1)
+  // barEnd 为累计 totalDays 个有效日所落到的日历日期（跳过假期）
+  return addActiveDays(task.startDate, totalDays, holidays)
 }
 
 /** 获取有完成记录的日期列表（按 dailyCompletions） */
@@ -311,21 +321,8 @@ export function generateProgressInstances(
   if (compareKey(start, effectiveEnd) > 0) return out // 无可显示范围
 
   // 计算进度条覆盖终点（仅计入实际完成，startStepIndex 不产生预填进度）。
-  // 注意：此处读取的是当前 steps 的 interval，因此外部修改 interval 后会实时影响覆盖范围。
-  let barTotalCompletions = 0
-  for (const key of completionDates) {
-    barTotalCompletions += dc[key] ?? 0
-  }
-  let barEnd: DateKey
-  let barTotalDays = 0
-  for (let i = 0; i < barTotalCompletions; i++) {
-    barTotalDays += steps[(startIdx + i) % steps.length].interval
-  }
-  if (barTotalDays === 0) {
-    barEnd = addDays(task.startDate, -1)
-  } else {
-    barEnd = addDays(task.startDate, barTotalDays - 1)
-  }
+  // 假期模式下会自动跳过假期，保证覆盖的有效日数量不变。
+  const barEnd = computeProgressBarEnd(task, holidays)
 
   const dates = getDateRange(start, effectiveEnd)
 

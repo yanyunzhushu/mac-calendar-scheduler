@@ -98,7 +98,7 @@ export function CalendarApp() {
   const focusedProgress = useMemo(() => {
     if (!focusedTask || focusedTask.type !== 'progress') return null
     const pt = focusedTask as ProgressTask
-    let barEnd = computeProgressBarEnd(pt)
+    let barEnd = computeProgressBarEnd(pt, activeHolidays)
     // 停止推进后，进度条截至今天，不展示未来覆盖区域
     if (pt.paused && compareKey(barEnd, today) > 0) {
       barEnd = today

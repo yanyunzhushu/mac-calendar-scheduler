@@ -3,7 +3,7 @@
 import { Check, Eye, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { ProgressStep, ProgressTask, Task, TaskInstance } from '@/lib/types'
+import type { Holiday, ProgressStep, ProgressTask, Task, TaskInstance } from '@/lib/types'
 import { TASK_TYPE_LABEL } from '@/lib/types'
 import { dotColor, STATUS_LABEL, statusTextClass } from '@/lib/status-visuals'
 import { computeProgressBarEnd, findCompletionForSkipDay } from '@/lib/task-engine'
@@ -11,6 +11,7 @@ import { computeProgressBarEnd, findCompletionForSkipDay } from '@/lib/task-engi
 interface InstanceItemProps {
   inst: TaskInstance
   task?: Task | null
+  holidays?: Holiday[]
   onComplete: () => void
   onUncomplete: () => void
   onUndoSkip?: (undoDate: string) => void
@@ -47,7 +48,7 @@ function ProgressStepsDisplay({ steps, currentStepIndex }: { steps: ProgressStep
   )
 }
 
-export function InstanceItem({ inst, task, onComplete, onUncomplete, onUndoSkip, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
+export function InstanceItem({ inst, task, holidays = [], onComplete, onUncomplete, onUndoSkip, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
   const focusActive = focusedTaskId != null
   const hasDesc = !!task?.description?.trim()
   const hasSteps = task?.type === 'progress' && ((task as any).steps as ProgressStep[])?.length > 0
@@ -207,7 +208,7 @@ export function InstanceItem({ inst, task, onComplete, onUncomplete, onUndoSkip,
               onClick={() => {
                 if (onUndoSkip && task?.type === 'progress') {
                   const sorted = Object.keys(dc).filter((d) => (dc[d] ?? 0) > 0).sort()
-                  const barEnd = computeProgressBarEnd(pt!)
+                  const barEnd = computeProgressBarEnd(pt!, holidays)
                   const undoDate = findCompletionForSkipDay(inst.date, sorted, pt!.startDate, barEnd)
                   if (undoDate) onUndoSkip(undoDate)
                 }

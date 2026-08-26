@@ -68,6 +68,6 @@
 ## 进度任务的假期处理
 
 - `findHoliday()` — 查找某日期是否落在假期区间内
-- `adjustForHoliday()` — 进度任务截止日自动顺延过假期区间
+- 假期区间内的进度任务实例在 `generateInstancesForTask()` 层被过滤，不渲染
 - 今天处于假期时 → 进度任务实例为 `holiday` 状态，不可操作
 - paused 任务的今天实例同样为 `holiday` 状态

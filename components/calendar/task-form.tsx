@@ -265,6 +265,10 @@ export function TaskForm({
     editingTask?.type === 'progress' &&
     Object.values((editingTask as ProgressTask).dailyCompletions ?? {}).some((v) => (v ?? 0) > 0)
 
+  // 起始日期是否应被锁定：非持续进度任务在有完成记录后不可修改，
+  // 持续进度任务允许修改 startDate（引擎会基于当前 startDate 实时重算覆盖范围）。
+  const startDateLocked = taskHasCompletions(editingTask) && type !== 'progress'
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -347,9 +351,13 @@ export function TaskForm({
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              disabled={hasCompletions}
+              disabled={startDateLocked}
             />
-            {hasCompletions ? (
+            {type === 'progress' && hasCompletions ? (
+              <p className="text-xs text-amber-600">
+                有完成记录后仍可修改起始日期，修改会整体平移进度条覆盖范围（已完成的步骤天数不变）。
+              </p>
+            ) : startDateLocked ? (
               <p className="text-xs text-amber-600">有完成记录后不可修改起始日期</p>
             ) : (
               <p className="text-xs text-muted-foreground">可直接输入或选择日期</p>
@@ -794,4 +802,16 @@ function EndConditionEditor({
       </RadioGroup>
     </div>
   )
+}
+
+/** 判断任务是否已有完成记录（用于锁定起始日期等字段）。
+ * - 持续进度任务看 `dailyCompletions`
+ * - 其他任务看 `completions` 时间戳记录
+ */
+function taskHasCompletions(task: Task | null): boolean {
+  if (!task) return false
+  if (task.type === 'progress') {
+    return Object.values((task as ProgressTask).dailyCompletions ?? {}).some((v) => (v ?? 0) > 0)
+  }
+  return Object.keys(task.completions ?? {}).length > 0
 }
