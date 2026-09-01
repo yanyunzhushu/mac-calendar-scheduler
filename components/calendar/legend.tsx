@@ -5,7 +5,6 @@ const LEGEND = [
   { color: 'var(--status-progress)', label: '持续进度' },
   { color: 'var(--status-completed)', label: '已完成' },
   { color: 'var(--status-missed)', label: '已错过' },
-  { color: 'var(--status-skipped)', label: '未做' },
 ]
 
 export function Legend({

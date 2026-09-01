@@ -203,7 +203,7 @@ function addActiveDays(start: DateKey, activeDays: number, holidays: Holiday[]):
 }
 
 /**
- * 计算进度条的结束日期（用于聚焦视图染色与状态判定）。
+ * 计算进度条的结束日期（用于聚焦视图染色）。
  *
  * 重要语义：
  * 1. 本函数基于任务**当前**的 `steps[i].interval` 实时重算。
@@ -253,41 +253,6 @@ function getCompletionDates(task: ProgressTask): DateKey[] {
   return Object.keys(dc).filter((d) => (dc[d] ?? 0) > 0).sort()
 }
 
-/** 判断某日是否在两段完成记录之间的跳过区间内（不含完成日本身） */
-function isInSkipRange(
-  date: DateKey,
-  completionDates: DateKey[],
-  startDate: DateKey,
-): boolean {
-  let prev = startDate
-  for (const c of completionDates) {
-    // 跳过区间：prev+1 到 c-1（不含两端）
-    if (compareKey(date, prev) > 0 && compareKey(date, c) < 0) return true
-    prev = c
-  }
-  return false
-}
-
-/** 找到覆盖某跳过日的完成日期（用于撤销），找不到返回 null */
-export function findCompletionForSkipDay(
-  date: DateKey,
-  sortedCompletions: DateKey[],
-  startDate: DateKey,
-  barEnd?: DateKey,
-): DateKey | null {
-  let prev = startDate
-  for (const c of sortedCompletions) {
-    // 跳过区间覆盖 prev+1 到 c-1
-    if (compareKey(date, prev) > 0 && compareKey(date, c) <= 0) return c
-    prev = c
-  }
-  // 日期在最后一次完成之后、barEnd 范围之内 → 返回最后一次完成
-  if (sortedCompletions.length > 0 && barEnd && compareKey(date, prev) > 0 && compareKey(date, barEnd) <= 0) {
-    return sortedCompletions[sortedCompletions.length - 1]
-  }
-  return null
-}
-
 export function generateProgressInstances(
   task: ProgressTask,
   holidays: Holiday[],
@@ -319,10 +284,6 @@ export function generateProgressInstances(
 
   const start = compareKey(rangeStart, task.startDate) > 0 ? rangeStart : task.startDate
   if (compareKey(start, effectiveEnd) > 0) return out // 无可显示范围
-
-  // 计算进度条覆盖终点（仅计入实际完成，startStepIndex 不产生预填进度）。
-  // 假期模式下会自动跳过假期，保证覆盖的有效日数量不变。
-  const barEnd = computeProgressBarEnd(task, holidays)
 
   const dates = getDateRange(start, effectiveEnd)
 
@@ -385,7 +346,7 @@ export function generateProgressInstances(
         actionable = false
         meta = step?.name ? `下一步: ${step.name}` : undefined
       } else if (compareKey(date, today) === 0) {
-        // 今天：无论进度条是否已覆盖（超前完成只是提前量），始终可完成
+        // 今天：始终可完成
         const inHoliday = !!findHoliday(today, holidays)
         if (inHoliday) {
           status = 'holiday'
@@ -394,26 +355,8 @@ export function generateProgressInstances(
           status = 'pending'
           actionable = true
         }
-      } else if (isInSkipRange(date, completionDates, task.startDate)) {
-        // 过去日，在跳过区间内
-        if (compareKey(date, barEnd) <= 0) {
-          // 进度条已覆盖 → 已覆盖
-          status = 'skipped'
-          actionable = false
-          meta = '已覆盖'
-        } else {
-          // 进度条未覆盖 → 未做
-          status = 'skipped'
-          actionable = false
-          meta = step?.name ? `${step.name} · 未做` : '未做'
-        }
-      } else if (compareKey(date, barEnd) <= 0) {
-        // 过去日，在进度条覆盖范围内（最后一次完成之后、barEnd 之前）→ 已覆盖
-        status = 'skipped'
-        actionable = false
-        meta = '已覆盖'
       } else {
-        // 过去日（超出覆盖范围）
+        // 过去日：未完成 → 已错过（红色，可补做）
         status = 'missed'
         actionable = true
       }

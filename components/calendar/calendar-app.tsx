@@ -250,7 +250,6 @@ export function CalendarApp() {
                 holidays={activeHolidays}
                 onComplete={completeInstance}
                 onUncomplete={uncompleteInstance}
-                onUndoSkip={uncompleteInstance}
                 onOpenTask={openEdit}
                 onFocusTask={focusTask}
                 onTogglePause={togglePause}
@@ -277,7 +276,6 @@ export function CalendarApp() {
             holidays={activeHolidays}
             onComplete={completeInstance}
             onUncomplete={uncompleteInstance}
-            onUndoSkip={uncompleteInstance}
             onOpenTask={openEdit}
             onFocusTask={focusTask}
             onTogglePause={togglePause}

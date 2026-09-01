@@ -3,18 +3,15 @@
 import { Check, Eye, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { Holiday, ProgressStep, ProgressTask, Task, TaskInstance } from '@/lib/types'
+import type { ProgressStep, ProgressTask, Task, TaskInstance } from '@/lib/types'
 import { TASK_TYPE_LABEL } from '@/lib/types'
 import { dotColor, STATUS_LABEL, statusTextClass } from '@/lib/status-visuals'
-import { computeProgressBarEnd, findCompletionForSkipDay } from '@/lib/task-engine'
 
 interface InstanceItemProps {
   inst: TaskInstance
   task?: Task | null
-  holidays?: Holiday[]
   onComplete: () => void
   onUncomplete: () => void
-  onUndoSkip?: (undoDate: string) => void
   onOpenTask?: () => void
   onFocusTask?: (taskId: string) => void
   onTogglePause?: (taskId: string) => void
@@ -48,7 +45,7 @@ function ProgressStepsDisplay({ steps, currentStepIndex }: { steps: ProgressStep
   )
 }
 
-export function InstanceItem({ inst, task, holidays = [], onComplete, onUncomplete, onUndoSkip, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
+export function InstanceItem({ inst, task, onComplete, onUncomplete, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
   const focusActive = focusedTaskId != null
   const hasDesc = !!task?.description?.trim()
   const hasSteps = task?.type === 'progress' && ((task as any).steps as ProgressStep[])?.length > 0
@@ -65,7 +62,6 @@ export function InstanceItem({ inst, task, holidays = [], onComplete, onUncomple
         isFocused ? 'border-blue-500 ring-2 ring-blue-200' : 'border-border',
         inst.status === 'completed' && !isFocused && 'border-emerald-200 bg-emerald-50/60',
         inst.status === 'missed' && !isFocused && 'border-red-200 bg-red-50/60',
-        inst.status === 'skipped' && !isFocused && 'border-amber-200 bg-amber-50/60',
       )}
     >
       {/* 主体内容：聚焦其它任务时淡出 */}
@@ -101,15 +97,8 @@ export function InstanceItem({ inst, task, holidays = [], onComplete, onUncomple
         </button>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
           <span className="text-muted-foreground">{TASK_TYPE_LABEL[inst.taskType]}</span>
-          {inst.status === 'skipped' && inst.meta ? (
-            // 跳过日：meta（未做/已覆盖）直接作为状态文案，避免与状态标签重复
-            <span className={statusTextClass(inst.status)}>· {inst.meta}</span>
-          ) : (
-            <>
-              <span className={statusTextClass(inst.status)}>· {STATUS_LABEL[inst.status]}</span>
-              {inst.meta && <span className="text-muted-foreground">· {inst.meta}</span>}
-            </>
-          )}
+          <span className={statusTextClass(inst.status)}>· {STATUS_LABEL[inst.status]}</span>
+          {inst.meta && <span className="text-muted-foreground">· {inst.meta}</span>}
           {inst.status === 'completed' && completedCount > 0 && (
             <span
               key={`count-${completedCount}`}
@@ -193,31 +182,6 @@ export function InstanceItem({ inst, task, holidays = [], onComplete, onUncomple
               <RotateCcw className="h-3.5 w-3.5" />
               撤销
             </Button>
-          ) : inst.status === 'skipped' ? (
-            (() => {
-              // 无实际完成记录时（纯 startStepIndex 偏移覆盖），无需撤销
-              const pt = task as ProgressTask | undefined
-              const dc = pt?.dailyCompletions ?? {}
-              const hasAny = Object.values(dc).some((v) => (v ?? 0) > 0)
-              if (!hasAny) return null
-              return (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 min-w-[60px] gap-1 text-xs text-amber-600 hover:text-amber-700"
-              onClick={() => {
-                if (onUndoSkip && task?.type === 'progress') {
-                  const sorted = Object.keys(dc).filter((d) => (dc[d] ?? 0) > 0).sort()
-                  const barEnd = computeProgressBarEnd(pt!, holidays)
-                  const undoDate = findCompletionForSkipDay(inst.date, sorted, pt!.startDate, barEnd)
-                  if (undoDate) onUndoSkip(undoDate)
-                }
-              }}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              撤销
-            </Button>
-            )})()
           ) : inst.actionable ? (
             <Button size="sm" className="h-8 min-w-[60px] gap-1 text-xs" onClick={onComplete}>
               <Check className="h-3.5 w-3.5" />

@@ -137,7 +137,6 @@
   --status-progress: #f59e0b;
   --status-completed: #22c55e;
   --status-missed: #ef4444;
-  --status-skipped: #f59e0b;
 }
 
 /* ProgressTask 计数完成脉冲反馈 */

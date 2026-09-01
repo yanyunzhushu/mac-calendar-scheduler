@@ -237,14 +237,16 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
       const task = prev.tasks.find((t) => t.id === taskId)
       if (!task) return prev
       if (task.type === 'progress') {
-        // 进度任务：递减 dailyCompletions[date]，减到 0 则删除 key
+        // 进度任务：递减 dailyCompletions[date]
         const pt = task as ProgressTask
         const dc = { ...pt.dailyCompletions }
         const cur = dc[date] || 0
-        if (cur <= 1) {
-          delete dc[date]
-        } else {
+        if (cur > 1) {
+          // 链式完成仍有剩余次数：递减，仍视为已完成
           dc[date] = cur - 1
+        } else {
+          // 完成记录清空（cur 为 0 或 1）：删除记录，该日变回可补做
+          delete dc[date]
         }
         return {
           ...prev,

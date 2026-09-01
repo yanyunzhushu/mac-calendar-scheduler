@@ -1,6 +1,6 @@
 import type { InstanceStatus, TaskInstance, TaskType } from './types'
 
-/** 圆点颜色：完成=绿，错过=红，假期=灰，跳过=黄，未来=浅色任务类型色，待完成=任务类型色 */
+/** 圆点颜色：完成=绿，错过=红，假期=灰，未来=浅色任务类型色，待完成=任务类型色 */
 export function dotColor(inst: TaskInstance): string {
   switch (inst.status) {
     case 'completed':
@@ -9,8 +9,6 @@ export function dotColor(inst: TaskInstance): string {
       return 'var(--status-missed)'
     case 'holiday':
       return '#9ca3af'
-    case 'skipped':
-      return 'var(--status-skipped)'
     case 'future':
     case 'pending':
     default:
@@ -36,7 +34,6 @@ export const STATUS_LABEL: Record<InstanceStatus, string> = {
   missed: '已错过',
   future: '未来',
   holiday: '假期暂停',
-  skipped: '未做',
 }
 
 export function statusTextClass(status: InstanceStatus): string {
@@ -47,8 +44,6 @@ export function statusTextClass(status: InstanceStatus): string {
       return 'text-red-500'
     case 'holiday':
       return 'text-muted-foreground'
-    case 'skipped':
-      return 'text-amber-600'
     default:
       return 'text-foreground'
   }

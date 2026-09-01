@@ -95,7 +95,6 @@ export type InstanceStatus =
   | 'missed' // 已错过
   | 'future' // 未来待完成
   | 'holiday' // 处于假期暂停
-  | 'skipped' // 持续进度：未做（已跳过）
 
 export interface TaskGroup {
   id: string

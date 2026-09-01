@@ -13,7 +13,6 @@ interface DayViewProps {
   holidays: Holiday[]
   onComplete: (taskId: string, date: DateKey) => void
   onUncomplete: (taskId: string, date: DateKey) => void
-  onUndoSkip?: (taskId: string, undoDate: string) => void
   onOpenTask: (taskId: string) => void
   onFocusTask?: (taskId: string) => void
   onTogglePause?: (taskId: string) => void
@@ -28,7 +27,6 @@ export function DayView({
   holidays,
   onComplete,
   onUncomplete,
-  onUndoSkip,
   onOpenTask,
   onFocusTask,
   onTogglePause,
@@ -58,10 +56,8 @@ export function DayView({
             key={`${inst.taskId}-${i}`}
             inst={inst}
             task={tasks.find((t) => t.id === inst.taskId)}
-            holidays={holidays}
             onComplete={() => onComplete(inst.taskId, inst.date)}
             onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
-            onUndoSkip={onUndoSkip ? (undoDate) => onUndoSkip(inst.taskId, undoDate) : undefined}
             onOpenTask={() => onOpenTask(inst.taskId)}
             onFocusTask={onFocusTask}
             onTogglePause={onTogglePause}
