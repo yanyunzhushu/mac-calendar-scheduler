@@ -37,12 +37,18 @@ export function HolidayDialog({
 }: HolidayDialogProps) {
   const [start, setStart] = useState<DateKey>(todayKey())
   const [end, setEnd] = useState<DateKey>(todayKey())
+  const validRange = Boolean(start && end && compareKey(start, end) <= 0)
+
+  function handleStartChange(nextStart: DateKey) {
+    setStart(nextStart)
+    if (nextStart && end && compareKey(end, nextStart) < 0) {
+      setEnd(nextStart)
+    }
+  }
 
   function handleAdd() {
-    if (!start || !end) return
-    const s = compareKey(start, end) <= 0 ? start : end
-    const e = compareKey(start, end) <= 0 ? end : start
-    onAdd(s, e)
+    if (!validRange) return
+    onAdd(start, end)
   }
 
   return (
@@ -69,14 +75,14 @@ export function HolidayDialog({
             <div className="flex items-end gap-2">
               <div className="flex flex-1 flex-col gap-1">
                 <span className="text-xs text-muted-foreground">开始</span>
-                <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+                <Input type="date" value={start} onChange={(e) => handleStartChange(e.target.value)} />
               </div>
               <div className="flex flex-1 flex-col gap-1">
                 <span className="text-xs text-muted-foreground">结束</span>
-                <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+                <Input type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />
               </div>
             </div>
-            <Button size="sm" onClick={handleAdd} className="mt-1 self-start">
+            <Button size="sm" onClick={handleAdd} disabled={!validRange} className="mt-1 self-start">
               添加
             </Button>
           </div>
