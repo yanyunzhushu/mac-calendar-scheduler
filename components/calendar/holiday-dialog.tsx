@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   Dialog,
@@ -38,6 +38,16 @@ export function HolidayDialog({
   const [start, setStart] = useState<DateKey>(todayKey())
   const [end, setEnd] = useState<DateKey>(todayKey())
   const validRange = Boolean(start && end && compareKey(start, end) <= 0)
+
+  useEffect(() => {
+    if (!open) return
+
+    const today = todayKey()
+    setStart(today)
+    setEnd((currentEnd) =>
+      currentEnd && compareKey(currentEnd, today) >= 0 ? currentEnd : today,
+    )
+  }, [open])
 
   function handleStartChange(nextStart: DateKey) {
     setStart(nextStart)
