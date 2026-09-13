@@ -210,7 +210,6 @@ export function CalendarApp() {
         selected={selected}
         holidayEnabled={state.holidayModeEnabled}
         trashCount={state.trash.length}
-        tasks={state.tasks}
         onViewChange={setView}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}
@@ -218,7 +217,6 @@ export function CalendarApp() {
         onJump={handleJump}
         onOpenHoliday={() => setHolidayOpen(true)}
         onOpenTrash={() => setTrashOpen(true)}
-        onOpenTask={openEdit}
         onCreate={openCreate}
       />
 

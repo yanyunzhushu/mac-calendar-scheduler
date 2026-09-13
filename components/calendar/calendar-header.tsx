@@ -5,8 +5,6 @@ import { ChevronLeft, ChevronRight, Palmtree, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { fromKey, type DateKey } from '@/lib/date-utils'
-import type { Task } from '@/lib/types'
-import { TaskSearch } from './task-search'
 
 const MONTHS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
 
@@ -69,7 +67,6 @@ interface CalendarHeaderProps {
   selected: DateKey
   holidayEnabled: boolean
   trashCount: number
-  tasks: Task[]
   onViewChange: (v: ViewMode) => void
   onPrev: () => void
   onNext: () => void
@@ -77,7 +74,6 @@ interface CalendarHeaderProps {
   onJump: (key: DateKey) => void
   onOpenHoliday: () => void
   onOpenTrash: () => void
-  onOpenTask: (taskId: string) => void
   onCreate: () => void
 }
 
@@ -93,7 +89,6 @@ export function CalendarHeader({
   selected,
   holidayEnabled,
   trashCount,
-  tasks,
   onViewChange,
   onPrev,
   onNext,
@@ -101,7 +96,6 @@ export function CalendarHeader({
   onJump,
   onOpenHoliday,
   onOpenTrash,
-  onOpenTask,
   onCreate,
 }: CalendarHeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -157,8 +151,7 @@ export function CalendarHeader({
         </div>
       </div>
 
-      <div className="flex min-w-0 items-center gap-2">
-        <TaskSearch tasks={tasks} onOpenTask={onOpenTask} />
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
         <div className="flex shrink-0 items-center rounded-lg border border-border bg-muted/50 p-0.5">
           {(['month', 'week', 'day'] as ViewMode[]).map((v) => (
             <button
