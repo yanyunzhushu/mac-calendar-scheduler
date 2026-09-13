@@ -27,6 +27,7 @@ import type {
   EbbinghausTask,
   EndCondition,
   EndConditionType,
+  LongTermTask,
   ProgressStep,
   ProgressTask,
   RecurrenceFreq,
@@ -54,7 +55,7 @@ interface TaskFormProps {
   onDeleteTheme: (id: string) => void
 }
 
-const TYPE_OPTIONS: TaskType[] = ['single', 'recurring', 'ebbinghaus', 'progress']
+const TYPE_OPTIONS: TaskType[] = ['single', 'recurring', 'ebbinghaus', 'progress', 'longterm']
 
 const FREQ_LABELS: Record<RecurrenceFreq, string> = {
   daily: '每天',
@@ -149,6 +150,8 @@ export function TaskForm({
         setIntervalsText(editingTask.intervals.join(','))
         setThemeId(editingTask.themeId ?? '')
         applyEnd(editingTask.end)
+      } else if (editingTask.type === 'longterm') {
+        setStartDate(editingTask.startDate)
       } else {
         setStartDate(editingTask.startDate)
         if (editingTask.steps?.length) {
@@ -239,6 +242,13 @@ export function TaskForm({
         end: buildEnd(),
         themeId: themeId || undefined,
       } as Omit<EbbinghausTask, 'id' | 'createdAt' | 'completions'>
+    } else if (type === 'longterm') {
+      payload = {
+        type: 'longterm',
+        name: name.trim(),
+        description: description.trim() || undefined,
+        startDate,
+      } as Omit<LongTermTask, 'id' | 'createdAt' | 'completions'>
     } else {
       payload = {
         type: 'progress',
@@ -281,7 +291,7 @@ export function TaskForm({
           {/* 任务类型 */}
           <div className="flex flex-col gap-2">
             <Label>任务类型</Label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {TYPE_OPTIONS.map((opt) => (
                 <button
                   key={opt}
@@ -315,6 +325,7 @@ export function TaskForm({
               {type === 'recurring' && '按固定周期自动重复（每天/每周/每月/自定义间隔），可设置结束条件。'}
               {type === 'ebbinghaus' && '按自定义间隔序列进行复习（如第 0、1、2、4、7 天…），适合背单词等需要周期性复习的内容。'}
               {type === 'progress' && '每日推进任务：起始日起每天生成一个实例，完成后跳至下一步，期间未完成的天数自动标记为未做。'}
+              {type === 'longterm' && '长期提醒：从开始日起每天出现在任务列表中，没有完成/错过概念，只作为提醒常驻显示，适合重要但不紧急的事。'}
             </p>
           </div>
 
@@ -344,7 +355,7 @@ export function TaskForm({
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="task-start">
-              {type === 'single' ? '执行日期' : type === 'ebbinghaus' ? '首次学习' : '起始日期'}
+              {type === 'single' ? '执行日期' : type === 'longterm' ? '开始提醒日期' : type === 'ebbinghaus' ? '首次学习' : '起始日期'}
             </Label>
             <Input
               id="task-start"

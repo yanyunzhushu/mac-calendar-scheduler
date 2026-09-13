@@ -1,6 +1,6 @@
 import type { DateKey } from './date-utils'
 
-export type TaskType = 'single' | 'recurring' | 'ebbinghaus' | 'progress'
+export type TaskType = 'single' | 'recurring' | 'ebbinghaus' | 'progress' | 'longterm'
 
 /** 周期任务的重复频率 */
 export type RecurrenceFreq = 'daily' | 'weekly' | 'monthly' | 'customDays'
@@ -71,7 +71,15 @@ export interface ProgressTask extends BaseTask {
   startStepIndex?: number
 }
 
-export type Task = SingleTask | RecurringTask | EbbinghausTask | ProgressTask
+export interface LongTermTask extends BaseTask {
+  type: 'longterm'
+  /** 从这一天起每天显示提醒，永不结束（直到删除） */
+  startDate: DateKey
+  /** 「今日已阅」记录：key=日期，value=已阅时间戳。仅当日有效，次日自动视为未阅（记录保留） */
+  acknowledgements?: Record<DateKey, number>
+}
+
+export type Task = SingleTask | RecurringTask | EbbinghausTask | ProgressTask | LongTermTask
 
 export interface Holiday {
   id: string
@@ -95,6 +103,7 @@ export type InstanceStatus =
   | 'missed' // 已错过
   | 'future' // 未来待完成
   | 'holiday' // 处于假期暂停
+  | 'reminder' // 长期任务：仅作为提醒常驻，无完成/错过概念
 
 export interface TaskGroup {
   id: string
@@ -128,6 +137,8 @@ export interface TaskInstance {
   meta?: string
   /** 所属分组名称 */
   groupName?: string
+  /** 长期任务：该日是否已被标记「今日已阅」 */
+  acknowledged?: boolean
 }
 
 export const TASK_TYPE_LABEL: Record<TaskType, string> = {
@@ -135,6 +146,7 @@ export const TASK_TYPE_LABEL: Record<TaskType, string> = {
   recurring: '周期任务',
   ebbinghaus: '复习任务',
   progress: '持续进度',
+  longterm: '长期任务',
 }
 
 /** 各任务类型的基础（待完成）颜色 */
@@ -143,4 +155,5 @@ export const TASK_TYPE_COLOR: Record<TaskType, string> = {
   recurring: '#3b82f6', // 蓝
   ebbinghaus: '#a855f7', // 紫
   progress: '#f59e0b', // 橙
+  longterm: '#ec4899', // 粉
 }

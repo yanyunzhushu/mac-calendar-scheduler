@@ -47,8 +47,9 @@ pkill -f "scripts/serve"  # 手动停止静态服务器
   - `RecurringTask`（周期任务）— 按 `freq`（每天/每周/每月/自定义间隔 `customDays` + `interval`）从 `startDate` 重复，可设 `end` 结束条件（永不/次数/日期）；支持 `countingMode`
   - `EbbinghausTask`（复习任务）— 按可配置的天数间隔序列进行间隔重复，默认 `0,1,2,4,7,15,30,60`；超出序列后以最后一个间隔循环；可设 `themeId`（学习主题）
   - `ProgressTask`（持续进度）— 累积进度条模型。支持**步骤列表**（`steps: ProgressStep[]`，每步有 `name` 和独立 `interval` 推进天数，按顺序循环）；`dailyCompletions: Record<DateKey, number>` 记录每日完成次数（支持同日多次链式完成）；`defaultInterval`（无步骤时的推进天数）；`startStepIndex`（起始步骤索引，创建后不可修改）
+  - `LongTermTask`（长期任务）— 从 `startDate` 起每天显示的常驻提醒：无完成/错过概念，永不结束，只能删除（进回收站）；支持 `acknowledgements`「今日已阅」记录（仅当天展示已阅状态，次日自动视为未阅）；假期模式不隐藏
   - `Holiday` — 假期区间，假期模式开启时周期任务与持续进度任务在此期间隐藏（见下文「假期模式」）
-  - `TaskInstance` — 任务在特定日期的已解析实例，含 `InstanceStatus`：`pending`（待完成）/ `completed` / `missed`（已错过）/ `future` / `holiday`（假期暂停）
+  - `TaskInstance` — 任务在特定日期的已解析实例，含 `InstanceStatus`：`pending`（待完成）/ `completed` / `missed`（已错过）/ `future` / `holiday`（假期暂停）/ `reminder`（长期任务提醒）
   - `AppState` — 完整持久化状态：`tasks[]`、`holidays[]`、`holidayModeEnabled`、`groups[]`（任务分组，见下文）、`themes[]`（学习主题）、`trash[]`（回收站）
   - 导出 `TASK_TYPE_LABEL`（中文标签）和 `TASK_TYPE_COLOR`（各类型基础色）
 
@@ -66,7 +67,10 @@ pkill -f "scripts/serve"  # 手动停止静态服务器
     - 假期感知：`findHoliday()`；今天处于假期时实例为 `holiday` 状态
     - `paused` 任务今天显示 `holiday` 状态，不可操作
   - `buildInstanceMap()` — 主入口：给定任务+假期+范围，返回 `Record<DateKey, TaskInstance[]>`；底层 `generateInstancesForTask()` 会在假期模式生效时过滤掉落在假期区间内的周期任务与持续进度任务实例
+
+  - `generateLongTermInstances()` — 长期任务从 `startDate` 起每天生成一个 `reminder` 状态实例（无完成/错过概念，`actionable` 恒为 false）；`startDate` 在未来时仅显示一个灰色 `future` 标记；不受假期过滤影响
   - `countTodayMissed()` — 统计已错过实例（**排除进度任务**，避免天天泛滥），用于主区域底部的红色提醒条
+  - 注意：`countTodayMissed` 实际同时排除进度任务与长期任务（`t.type !== 'progress' && t.type !== 'longterm'）
 
 - **`use-app-state.ts`** — React 钩子，唯一的状态写入口：
   - 初始化时同步从 `localStorage` 加载；**没有任何预加载示例任务**（空状态起步）
@@ -112,7 +116,7 @@ pkill -f "scripts/serve"  # 手动停止静态服务器
 
 ### 假期模式
 
-当 `holidayModeEnabled` 为 true 时，`activeHolidays` 非空，落在假期区间内的周期任务与持续进度任务实例在生成层被过滤（`generateInstancesForTask`），所有视图（月/周/日/侧边栏）不显示，周期任务假期内也不计 missed；日常任务与复习任务不受影响。隐藏仅为显示层行为，不改动任何任务数据与调度，假期结束后自动恢复显示。
+当 `holidayModeEnabled` 为 true 时，`activeHolidays` 非空，落在假期区间内的周期任务与持续进度任务实例在生成层被过滤（`generateInstancesForTask`），所有视图（月/周/日/侧边栏）不显示，周期任务假期内也不计 missed；日常任务、复习任务与长期任务不受影响（长期任务假期内继续显示）。隐藏仅为显示层行为，不改动任何任务数据与调度，假期结束后自动恢复显示。
 
 ### 任务视图（Focused View）
 

@@ -20,6 +20,7 @@ export function typeColor(type: TaskType): string {
   if (type === 'single') return 'var(--status-single)'
   if (type === 'recurring') return 'var(--status-recurring)'
   if (type === 'ebbinghaus') return 'var(--status-ebbinghaus)'
+  if (type === 'longterm') return 'var(--status-longterm)'
   return 'var(--status-progress)'
 }
 
@@ -34,6 +35,7 @@ export const STATUS_LABEL: Record<InstanceStatus, string> = {
   missed: '已错过',
   future: '未来',
   holiday: '假期暂停',
+  reminder: '提醒',
 }
 
 export function statusTextClass(status: InstanceStatus): string {
@@ -44,6 +46,8 @@ export function statusTextClass(status: InstanceStatus): string {
       return 'text-red-500'
     case 'holiday':
       return 'text-muted-foreground'
+    case 'reminder':
+      return 'text-pink-600'
     default:
       return 'text-foreground'
   }

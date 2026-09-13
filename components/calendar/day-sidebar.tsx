@@ -15,6 +15,7 @@ interface DaySidebarProps {
   holidays: Holiday[]
   onComplete: (taskId: string, date: DateKey) => void
   onUncomplete: (taskId: string, date: DateKey) => void
+  onToggleAck?: (taskId: string, date: DateKey) => void
   onOpenTask: (taskId: string) => void
   onFocusTask?: (taskId: string) => void
   onTogglePause?: (taskId: string) => void
@@ -31,6 +32,7 @@ export function DaySidebar({
   holidays,
   onComplete,
   onUncomplete,
+  onToggleAck,
   onOpenTask,
   onFocusTask,
   onTogglePause,
@@ -80,8 +82,10 @@ export function DaySidebar({
                 key={`${inst.taskId}-${i}`}
                 inst={inst}
                 task={tasks.find((t) => t.id === inst.taskId)}
+                today={today}
                 onComplete={() => onComplete(inst.taskId, inst.date)}
                 onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
+                onToggleAck={onToggleAck}
                 onOpenTask={() => onOpenTask(inst.taskId)}
                 onFocusTask={onFocusTask}
                 onTogglePause={onTogglePause}

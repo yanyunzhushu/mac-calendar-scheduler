@@ -70,7 +70,9 @@ export function MonthView({
             focusedTaskId && focusedInstanceMap ? focusedInstanceMap[key] : undefined
           const hasFocused = !!focusedInsts?.length
           const focusedAllCompleted = focusedInsts?.every((i) => i.status === 'completed') ?? false
-          const focusedAllUncompleted = hasFocused && !focusedAllCompleted
+          // 长期任务聚焦：没有完成/错过概念，使用粉色提醒染色
+          const focusedIsReminder = focusedInsts?.every((i) => i.taskType === 'longterm') ?? false
+          const focusedAllUncompleted = hasFocused && !focusedAllCompleted && !focusedIsReminder
           const isFuture = hasFocused && compareKey(key, today) > 0
 
           // 持续推进任务进度条染色
@@ -100,6 +102,8 @@ export function MonthView({
                 // 非进度任务的原有聚焦染色（实例级）— 当月使用完整饱和度
                 !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-50',
                 !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-50',
+                !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && inMonth && 'bg-pink-50 ring-2 ring-inset ring-pink-400',
+                !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && !inMonth && 'bg-pink-50/50 ring-2 ring-inset ring-pink-400/40',
                 !focusedProgress && focusedTaskId && hasFocused && !isFuture && inMonth && 'ring-2 ring-inset',
                 !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'ring-emerald-400',
                 !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && inMonth && 'ring-red-400',
@@ -127,6 +131,8 @@ export function MonthView({
                     // 非进度任务日期数字 — 当月
                     !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-200 text-emerald-900',
                     !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-200 text-red-900',
+                    !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && inMonth && 'bg-pink-200 text-pink-900',
+                    !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && !inMonth && 'bg-pink-200/60 text-pink-900/70',
                     !focusedProgress && focusedTaskId && hasFocused && isFuture && inMonth && 'bg-gray-200 text-gray-500',
                     // 进度任务日期数字 — 当月
                     barColor === 'green' && inMonth && 'bg-emerald-200 text-emerald-900',

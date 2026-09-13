@@ -12,6 +12,7 @@ import type {
   EndCondition,
   Holiday,
   InstanceStatus,
+  LongTermTask,
   ProgressStep,
   ProgressTask,
   RecurringTask,
@@ -418,6 +419,54 @@ export function generateSingleInstances(
   ]
 }
 
+// ---------- 长期任务 ----------
+
+/**
+ * 长期任务：从 startDate 起每天生成一个「提醒」实例，永不结束。
+ * - 无完成/错过概念，actionable 恒为 false
+ * - 假期期间继续显示（不受假期模式影响）
+ * - startDate 在未来时：仅显示起始日一个灰色未来标记（提醒尚未开始）
+ */
+export function generateLongTermInstances(
+  task: LongTermTask,
+  rangeStart: DateKey,
+  rangeEnd: DateKey,
+  today: DateKey,
+): TaskInstance[] {
+  const out: TaskInstance[] = []
+  if (compareKey(task.startDate, today) > 0) {
+    if (compareKey(task.startDate, rangeStart) >= 0 && compareKey(task.startDate, rangeEnd) <= 0) {
+      out.push({
+        taskId: task.id,
+        taskName: task.name,
+        taskType: 'longterm',
+        date: task.startDate,
+        status: 'future',
+        actionable: false,
+      })
+    }
+    return out
+  }
+
+  const start = compareKey(rangeStart, task.startDate) > 0 ? rangeStart : task.startDate
+  const end = compareKey(today, rangeEnd) > 0 ? rangeEnd : today
+  if (compareKey(start, end) > 0) return out
+
+  const acks = task.acknowledgements ?? {}
+  for (const date of getDateRange(start, end)) {
+    out.push({
+      taskId: task.id,
+      taskName: task.name,
+      taskType: 'longterm',
+      date,
+      status: 'reminder',
+      actionable: false,
+      acknowledged: !!acks[date],
+    })
+  }
+  return out
+}
+
 // ---------- 汇总 ----------
 
 export function generateInstancesForTask(
@@ -434,6 +483,8 @@ export function generateInstancesForTask(
     instances = generateRecurringInstances(task, rangeStart, rangeEnd, today)
   } else if (task.type === 'ebbinghaus') {
     instances = generateEbbinghausInstances(task, rangeStart, rangeEnd, today)
+  } else if (task.type === 'longterm') {
+    instances = generateLongTermInstances(task, rangeStart, rangeEnd, today)
   } else {
     instances = generateProgressInstances(task, holidays, rangeStart, rangeEnd, today)
   }
@@ -471,7 +522,8 @@ export function countTodayMissed(
 ): TaskInstance[] {
   if (tasks.length === 0) return []
   // 排除持续进度任务（新模型每天都有实例，会泛滥错过计数）
-  const nonProgressTasks = tasks.filter((t) => t.type !== 'progress')
+  // 与长期任务（只有提醒实例，永远不会有 missed 状态）
+  const nonProgressTasks = tasks.filter((t) => t.type !== 'progress' && t.type !== 'longterm')
   if (nonProgressTasks.length === 0) return []
   let earliest = today
   for (const t of nonProgressTasks) {

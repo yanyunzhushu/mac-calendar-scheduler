@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
 import {
   addDays,
   addMonths,
@@ -13,8 +12,8 @@ import {
   type DateKey,
 } from '@/lib/date-utils'
 import { useAppState } from '@/lib/use-app-state'
-import { buildInstanceMap, computeProgressBarEnd, countTodayMissed } from '@/lib/task-engine'
-import type { Holiday, ProgressTask, Task } from '@/lib/types'
+import { buildInstanceMap, computeProgressBarEnd } from '@/lib/task-engine'
+import type { Holiday, ProgressTask, Task, TaskInstance } from '@/lib/types'
 import { TASK_TYPE_LABEL } from '@/lib/types'
 import { CalendarHeader, type ViewMode } from './calendar-header'
 import { MonthView } from './month-view'
@@ -39,6 +38,7 @@ export function CalendarApp() {
     completeInstance,
     uncompleteInstance,
     togglePause,
+    toggleAcknowledge,
     setHolidayModeEnabled,
     addHoliday,
     deleteHoliday,
@@ -59,6 +59,14 @@ export function CalendarApp() {
   // 仅在假期模式开启时，假期才生效
   const activeHolidays: Holiday[] = state.holidayModeEnabled ? state.holidays : []
 
+  // 实例排序：长期任务（每日提醒）置顶，其余按类型分组
+  function compareInstances(a: TaskInstance, b: TaskInstance): number {
+    if (a.taskType === b.taskType) return 0
+    if (a.taskType === 'longterm') return -1
+    if (b.taskType === 'longterm') return 1
+    return a.taskType.localeCompare(b.taskType)
+  }
+
   // 计算当前视图的日期范围
   const [rangeStart, rangeEnd] = useMemo<[DateKey, DateKey]>(() => {
     if (view === 'month') {
@@ -72,21 +80,21 @@ export function CalendarApp() {
     return [anchor, anchor]
   }, [view, anchor])
 
-  const instanceMap = useMemo(
-    () => buildInstanceMap(state.tasks, activeHolidays, rangeStart, rangeEnd, today),
-    [state.tasks, activeHolidays, rangeStart, rangeEnd, today],
-  )
+  const instanceMap = useMemo(() => {
+    const map = buildInstanceMap(state.tasks, activeHolidays, rangeStart, rangeEnd, today)
+    for (const key of Object.keys(map)) {
+      map[key].sort(compareInstances)
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tasks, activeHolidays, rangeStart, rangeEnd, today])
 
   // 选中日的实例（单独按选中日计算，确保日/周/月视图一致）
   const selectedInstances = useMemo(() => {
     const map = buildInstanceMap(state.tasks, activeHolidays, selected, selected, today)
-    return (map[selected] ?? []).sort((a, b) => a.taskType.localeCompare(b.taskType))
+    return (map[selected] ?? []).sort(compareInstances)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tasks, activeHolidays, selected, today])
-
-  const todayMissed = useMemo(
-    () => countTodayMissed(state.tasks, activeHolidays, today),
-    [state.tasks, activeHolidays, today],
-  )
 
   // 任务视图：聚焦单个任务
   const focusedTask = focusedTaskId ? state.tasks.find((t) => t.id === focusedTaskId) ?? null : null
@@ -250,6 +258,7 @@ export function CalendarApp() {
                 holidays={activeHolidays}
                 onComplete={completeInstance}
                 onUncomplete={uncompleteInstance}
+                onToggleAck={toggleAcknowledge}
                 onOpenTask={openEdit}
                 onFocusTask={focusTask}
                 onTogglePause={togglePause}
@@ -257,14 +266,6 @@ export function CalendarApp() {
               />
             )}
           </div>
-          {todayMissed.length > 0 && (
-            <div className="flex items-center gap-1.5 border-t border-red-200/50 bg-red-50/60 px-5 py-2 text-xs text-red-600">
-              <AlertTriangle className="h-3 w-3 shrink-0" />
-              <span>
-                你有 <strong>{todayMissed.length}</strong> 项任务已错过未完成
-              </span>
-            </div>
-          )}
         </main>
 
         {view !== 'day' && (
@@ -276,6 +277,7 @@ export function CalendarApp() {
             holidays={activeHolidays}
             onComplete={completeInstance}
             onUncomplete={uncompleteInstance}
+            onToggleAck={toggleAcknowledge}
             onOpenTask={openEdit}
             onFocusTask={focusTask}
             onTogglePause={togglePause}

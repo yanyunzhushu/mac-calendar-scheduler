@@ -3,6 +3,7 @@
 import { Check, Eye, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import type { DateKey } from '@/lib/date-utils'
 import type { ProgressStep, ProgressTask, Task, TaskInstance } from '@/lib/types'
 import { TASK_TYPE_LABEL } from '@/lib/types'
 import { dotColor, STATUS_LABEL, statusTextClass } from '@/lib/status-visuals'
@@ -10,8 +11,10 @@ import { dotColor, STATUS_LABEL, statusTextClass } from '@/lib/status-visuals'
 interface InstanceItemProps {
   inst: TaskInstance
   task?: Task | null
+  today?: DateKey
   onComplete: () => void
   onUncomplete: () => void
+  onToggleAck?: (taskId: string, date: DateKey) => void
   onOpenTask?: () => void
   onFocusTask?: (taskId: string) => void
   onTogglePause?: (taskId: string) => void
@@ -45,11 +48,15 @@ function ProgressStepsDisplay({ steps, currentStepIndex }: { steps: ProgressStep
   )
 }
 
-export function InstanceItem({ inst, task, onComplete, onUncomplete, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
+export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onToggleAck, onOpenTask, onFocusTask, onTogglePause, isFocused, focusedTaskId }: InstanceItemProps) {
   const focusActive = focusedTaskId != null
   const hasDesc = !!task?.description?.trim()
   const hasSteps = task?.type === 'progress' && ((task as any).steps as ProgressStep[])?.length > 0
   const expanded = isFocused && task != null && (hasDesc || hasSteps)
+
+  // 长期任务：无完成概念，仅今天可标记「今日已阅」
+  const isLongterm = inst.taskType === 'longterm'
+  const canAck = isLongterm && inst.status !== 'future' && inst.date === today
 
   // 已完成计数（用于脉冲反馈和显示，适用于计数模式日常任务和持续进度任务）
   const completedCount =
@@ -62,6 +69,9 @@ export function InstanceItem({ inst, task, onComplete, onUncomplete, onOpenTask,
         isFocused ? 'border-blue-500 ring-2 ring-blue-200' : 'border-border',
         inst.status === 'completed' && !isFocused && 'border-emerald-200 bg-emerald-50/60',
         inst.status === 'missed' && !isFocused && 'border-red-200 bg-red-50/60',
+        // 长期任务：粉色底色区分提醒性质，已阅后整体淡化
+        isLongterm && inst.status !== 'future' && !isFocused && 'border-pink-200 bg-pink-50/50',
+        isLongterm && inst.acknowledged && !isFocused && 'opacity-70',
       )}
     >
       {/* 主体内容：聚焦其它任务时淡出 */}
@@ -98,6 +108,9 @@ export function InstanceItem({ inst, task, onComplete, onUncomplete, onOpenTask,
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
           <span className="text-muted-foreground">{TASK_TYPE_LABEL[inst.taskType]}</span>
           <span className={statusTextClass(inst.status)}>· {STATUS_LABEL[inst.status]}</span>
+          {inst.acknowledged && (
+            <span className="font-medium text-pink-600">· 已阅</span>
+          )}
           {inst.meta && <span className="text-muted-foreground">· {inst.meta}</span>}
           {inst.status === 'completed' && completedCount > 0 && (
             <span
@@ -154,7 +167,29 @@ export function InstanceItem({ inst, task, onComplete, onUncomplete, onOpenTask,
       <div className="flex shrink-0 flex-col items-center justify-center self-stretch">
         {/* 完成/撤销按钮：上下居中，随内容一起淡出 */}
         <div className="mt-0.5" style={{ opacity: focusActive && !isFocused ? 0.4 : 1 }}>
-          {inst.count != null ? (
+          {canAck ? (
+            inst.acknowledged ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 min-w-[60px] gap-1 text-xs text-muted-foreground"
+                onClick={() => onToggleAck?.(inst.taskId, inst.date)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                取消已阅
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-[60px] gap-1 text-xs text-pink-600 hover:bg-pink-50 hover:text-pink-700"
+                onClick={() => onToggleAck?.(inst.taskId, inst.date)}
+              >
+                <Check className="h-3.5 w-3.5" />
+                已阅
+              </Button>
+            )
+          ) : inst.count != null ? (
             <>
               {inst.count > 0 && (
                 <Button

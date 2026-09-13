@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { AppState, Holiday, ProgressTask, Task } from './types'
+import type { AppState, Holiday, LongTermTask, ProgressTask, Task } from './types'
 
 const STORAGE_KEY = 'calendar-app-state'
 
@@ -98,6 +98,9 @@ export function useAppState() {
         newTask.steps ??= []
         newTask.dailyCompletions ??= {}
         newTask.startStepIndex ??= 0
+      }
+      if (newTask.type === 'longterm') {
+        newTask.acknowledgements ??= {}
       }
       setState((prev) => ({ ...prev, tasks: [...prev.tasks, newTask] }))
     },
@@ -280,6 +283,23 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
     })
   }, [])
 
+  /** 长期任务「今日已阅」：切换某天的已阅记录（不是完成，不影响任何统计） */
+  const toggleAcknowledge = useCallback((taskId: string, date: string) => {
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === taskId)
+      if (!task || task.type !== 'longterm') return prev
+      const lt = task as LongTermTask
+      const acks = { ...(lt.acknowledgements ?? {}) }
+      if (acks[date]) {
+        delete acks[date]
+      } else {
+        acks[date] = Date.now()
+      }
+      const updated = { ...lt, acknowledgements: acks } as Task
+      return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) }
+    })
+  }, [])
+
   const setHolidayModeEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, holidayModeEnabled: enabled }))
   }, [])
@@ -329,6 +349,7 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
     completeInstance,
     uncompleteInstance,
     togglePause,
+    toggleAcknowledge,
     setHolidayModeEnabled,
     addHoliday,
     deleteHoliday,
