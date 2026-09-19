@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   Dialog,
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { compareKey, todayKey, type DateKey } from '@/lib/date-utils'
+import { addDays, compareKey, todayKey, type DateKey } from '@/lib/date-utils'
 import type { Holiday } from '@/lib/types'
 
 interface HolidayDialogProps {
@@ -38,6 +38,31 @@ export function HolidayDialog({
   const [start, setStart] = useState<DateKey>(todayKey())
   const [end, setEnd] = useState<DateKey>(todayKey())
   const validRange = Boolean(start && end && compareKey(start, end) <= 0)
+  const overlapInfo = useMemo(() => {
+    if (!validRange) return null
+
+    const touching = holidays.filter(
+      (holiday) =>
+        compareKey(holiday.start, addDays(end, 1)) <= 0 &&
+        compareKey(start, addDays(holiday.end, 1)) <= 0,
+    )
+    if (touching.length === 0) return null
+
+    const mergedStart = touching.reduce(
+      (earliest, holiday) => compareKey(holiday.start, earliest) < 0 ? holiday.start : earliest,
+      start,
+    )
+    const mergedEnd = touching.reduce(
+      (latest, holiday) => compareKey(holiday.end, latest) > 0 ? holiday.end : latest,
+      end,
+    )
+    const alreadyCovered = touching.some(
+      (holiday) =>
+        compareKey(holiday.start, start) <= 0 && compareKey(holiday.end, end) >= 0,
+    )
+
+    return { touchingCount: touching.length, mergedStart, mergedEnd, alreadyCovered }
+  }, [end, holidays, start, validRange])
 
   useEffect(() => {
     if (!open) return
@@ -57,13 +82,13 @@ export function HolidayDialog({
   }
 
   function handleAdd() {
-    if (!validRange) return
+    if (!validRange || overlapInfo?.alreadyCovered) return
     onAdd(start, end)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>假期模式</DialogTitle>
           <DialogDescription>
@@ -71,45 +96,62 @@ export function HolidayDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-2">
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">启用假期模式</p>
-              <p className="text-xs text-muted-foreground">关闭后所有假期区间将不再生效</p>
+        <div className="grid min-h-0 gap-4 overflow-y-auto py-2 pr-1 sm:grid-cols-2 sm:overflow-hidden">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <p className="text-sm font-medium">启用假期模式</p>
+                <p className="text-xs text-muted-foreground">关闭后所有假期区间将不再生效</p>
+              </div>
+              <Switch checked={enabled} onCheckedChange={onToggleEnabled} />
             </div>
-            <Switch checked={enabled} onCheckedChange={onToggleEnabled} />
-          </div>
 
-          <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
-            <Label>添加假期区间</Label>
-            <div className="flex items-end gap-2">
-              <div className="flex flex-1 flex-col gap-1">
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
+              <Label>添加假期区间</Label>
+              <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">开始</span>
                 <Input type="date" value={start} onChange={(e) => handleStartChange(e.target.value)} />
               </div>
-              <div className="flex flex-1 flex-col gap-1">
+              <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">结束</span>
                 <Input type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />
               </div>
+              <Button
+                size="sm"
+                onClick={handleAdd}
+                disabled={!validRange || overlapInfo?.alreadyCovered}
+                className="mt-1 w-full"
+              >
+                {overlapInfo?.alreadyCovered ? '该区间已存在' : '添加假期'}
+              </Button>
+              {overlapInfo && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {overlapInfo.alreadyCovered
+                    ? '所选日期已包含在现有假期中，不会重复添加。'
+                    : `将与 ${overlapInfo.touchingCount} 个重叠或相邻区间合并为 ${overlapInfo.mergedStart} ~ ${overlapInfo.mergedEnd}。`}
+                </p>
+              )}
             </div>
-            <Button size="sm" onClick={handleAdd} disabled={!validRange} className="mt-1 self-start">
-              添加
-            </Button>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">已设置的假期</p>
+          <div className="flex min-h-0 flex-col rounded-lg border border-border">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+              <p className="text-sm font-medium">已设置的假期</p>
+              <span className="text-xs tabular-nums text-muted-foreground">{holidays.length} 个区间</span>
+            </div>
             {holidays.length === 0 ? (
-              <p className="text-xs text-muted-foreground">暂无假期区间</p>
+              <div className="flex min-h-32 items-center justify-center px-3 text-xs text-muted-foreground">
+                暂无假期区间
+              </div>
             ) : (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto p-2 sm:max-h-none sm:min-h-0 sm:flex-1">
                 {holidays
                   .slice()
                   .sort((a, b) => compareKey(a.start, b.start))
                   .map((h) => (
                     <div
                       key={h.id}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                      className="flex shrink-0 items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
                     >
                       <span className="tabular-nums">
                         {h.start} ~ {h.end}

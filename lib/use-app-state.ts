@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { addDays, compareKey } from './date-utils'
 import type { AppState, Holiday, LongTermTask, ProgressTask, Task } from './types'
 
 const STORAGE_KEY = 'calendar-app-state'
@@ -26,6 +27,26 @@ const EMPTY_STATE: AppState = {
   trash: [],
 }
 
+/** 合并重复、重叠或首尾相邻的假期区间，避免同一段日期被多条记录覆盖。 */
+function normalizeHolidays(holidays: Holiday[]): Holiday[] {
+  const sorted = holidays
+    .slice()
+    .sort((a, b) => compareKey(a.start, b.start) || compareKey(a.end, b.end))
+
+  return sorted.reduce<Holiday[]>((merged, holiday) => {
+    const previous = merged.at(-1)
+    if (!previous || compareKey(holiday.start, addDays(previous.end, 1)) > 0) {
+      merged.push({ ...holiday })
+      return merged
+    }
+
+    if (compareKey(holiday.end, previous.end) > 0) {
+      previous.end = holiday.end
+    }
+    return merged
+  }, [])
+}
+
 /** 从 localStorage 读取状态，失败时返回空状态 */
 function loadState(): AppState {
   try {
@@ -35,6 +56,7 @@ function loadState(): AppState {
       if (Array.isArray(parsed.tasks) && Array.isArray(parsed.holidays)) {
         return {
           ...parsed,
+          holidays: normalizeHolidays(parsed.holidays),
           groups: Array.isArray(parsed.groups) ? parsed.groups : [],
           themes: Array.isArray(parsed.themes) ? parsed.themes : [],
           trash: Array.isArray(parsed.trash) ? parsed.trash : [],
@@ -306,7 +328,10 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
 
   const addHoliday = useCallback((start: string, end: string) => {
     const holiday: Holiday = { id: createId(), start, end }
-    setState((prev) => ({ ...prev, holidays: [...prev.holidays, holiday] }))
+    setState((prev) => ({
+      ...prev,
+      holidays: normalizeHolidays([...prev.holidays, holiday]),
+    }))
   }, [])
 
   const deleteHoliday = useCallback((id: string) => {
