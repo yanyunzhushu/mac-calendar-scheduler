@@ -81,6 +81,13 @@ export function HolidayDialog({
     }
   }
 
+  function handleEndChange(nextEnd: DateKey) {
+    setEnd(nextEnd)
+    if (nextEnd && start && compareKey(nextEnd, start) < 0) {
+      setStart(nextEnd)
+    }
+  }
+
   function handleAdd() {
     if (!validRange || overlapInfo?.alreadyCovered) return
     onAdd(start, end)
@@ -88,7 +95,7 @@ export function HolidayDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-2xl">
+      <DialogContent className="h-[min(42rem,calc(100dvh-2rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>假期模式</DialogTitle>
           <DialogDescription>
@@ -96,8 +103,8 @@ export function HolidayDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 gap-4 overflow-y-auto py-2 pr-1 sm:grid-cols-2 sm:overflow-hidden">
-          <div className="flex flex-col gap-4">
+        <div className="grid min-h-0 gap-4 overflow-y-auto overscroll-contain py-2 pr-1 [scrollbar-gutter:stable] sm:grid-cols-2 sm:overflow-hidden">
+          <div className="flex flex-col gap-4 sm:min-h-0 sm:overflow-y-auto sm:overscroll-contain sm:pr-1 sm:[scrollbar-gutter:stable]">
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
                 <p className="text-sm font-medium">启用假期模式</p>
@@ -114,7 +121,7 @@ export function HolidayDialog({
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">结束</span>
-                <Input type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />
+                <Input type="date" value={end} onChange={(e) => handleEndChange(e.target.value)} />
               </div>
               <Button
                 size="sm"
@@ -135,7 +142,7 @@ export function HolidayDialog({
           </div>
 
           <div className="flex min-h-0 flex-col rounded-lg border border-border">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
               <p className="text-sm font-medium">已设置的假期</p>
               <span className="text-xs tabular-nums text-muted-foreground">{holidays.length} 个区间</span>
             </div>
@@ -144,7 +151,7 @@ export function HolidayDialog({
                 暂无假期区间
               </div>
             ) : (
-              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto p-2 sm:max-h-none sm:min-h-0 sm:flex-1">
+              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto overscroll-contain p-2 [scrollbar-gutter:stable] sm:max-h-none sm:min-h-0 sm:flex-1">
                 {holidays
                   .slice()
                   .sort((a, b) => compareKey(a.start, b.start))
