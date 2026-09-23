@@ -8,6 +8,7 @@ export function dotColor(inst: TaskInstance): string {
     case 'missed':
       return 'var(--status-missed)'
     case 'holiday':
+    case 'stopped':
       return '#9ca3af'
     case 'future':
     case 'pending':
@@ -26,7 +27,7 @@ export function typeColor(type: TaskType): string {
 
 /** 未来/假期实例使用浅色（降低透明度）；跳过状态不淡化 */
 export function isFaded(status: InstanceStatus): boolean {
-  return status === 'future' || status === 'holiday'
+  return status === 'future' || status === 'holiday' || status === 'stopped'
 }
 
 export const STATUS_LABEL: Record<InstanceStatus, string> = {
@@ -35,6 +36,7 @@ export const STATUS_LABEL: Record<InstanceStatus, string> = {
   missed: '已错过',
   future: '未来',
   holiday: '假期暂停',
+  stopped: '已终止',
   reminder: '提醒',
 }
 
@@ -45,6 +47,7 @@ export function statusTextClass(status: InstanceStatus): string {
     case 'missed':
       return 'text-red-500'
     case 'holiday':
+    case 'stopped':
       return 'text-muted-foreground'
     case 'reminder':
       return 'text-pink-600'

@@ -14,7 +14,6 @@ import {
 import { useAppState } from '@/lib/use-app-state'
 import { buildInstanceMap, computeProgressBarEnd } from '@/lib/task-engine'
 import type { Holiday, ProgressTask, Task, TaskInstance } from '@/lib/types'
-import { TASK_TYPE_LABEL } from '@/lib/types'
 import { CalendarHeader, type ViewMode } from './calendar-header'
 import { MonthView } from './month-view'
 import { WeekView } from './week-view'
@@ -23,6 +22,8 @@ import { DaySidebar } from './day-sidebar'
 import { TaskForm } from './task-form'
 import { HolidayDialog } from './holiday-dialog'
 import { TrashDialog } from './trash-dialog'
+import { TaskListDialog } from './task-list-dialog'
+import { BackupDialog } from './backup-dialog'
 
 
 export function CalendarApp() {
@@ -44,6 +45,7 @@ export function CalendarApp() {
     deleteHoliday,
     createTheme,
     deleteTheme,
+    restoreBackup,
   } = useAppState()
 
   const today = todayKey()
@@ -54,6 +56,10 @@ export function CalendarApp() {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [holidayOpen, setHolidayOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [tasksOpen, setTasksOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [showFutureRecurring, setShowFutureRecurring] = useState(false)
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
 
   // 仅在假期模式开启时，假期才生效
@@ -80,28 +86,19 @@ export function CalendarApp() {
     return [anchor, anchor]
   }, [view, anchor])
 
-  const instanceMap = useMemo(() => {
-    const map = buildInstanceMap(state.tasks, activeHolidays, rangeStart, rangeEnd, today)
-    for (const key of Object.keys(map)) {
-      map[key].sort(compareInstances)
-    }
-    return map
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tasks, activeHolidays, rangeStart, rangeEnd, today])
-
   // 选中日的实例（单独按选中日计算，确保日/周/月视图一致）
   const selectedInstances = useMemo(() => {
-    const map = buildInstanceMap(state.tasks, activeHolidays, selected, selected, today)
+    const map = buildInstanceMap(state.tasks, activeHolidays, selected, selected, today, { showFutureRecurring })
     return (map[selected] ?? []).sort(compareInstances)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tasks, activeHolidays, selected, today])
+  }, [state.tasks, activeHolidays, selected, today, showFutureRecurring])
 
   // 任务视图：聚焦单个任务
   const focusedTask = focusedTaskId ? state.tasks.find((t) => t.id === focusedTaskId) ?? null : null
   const focusedInstanceMap = useMemo(() => {
     if (!focusedTask) return {}
-    return buildInstanceMap([focusedTask], activeHolidays, rangeStart, rangeEnd, today)
-  }, [focusedTask, activeHolidays, rangeStart, rangeEnd, today])
+    return buildInstanceMap([focusedTask], activeHolidays, rangeStart, rangeEnd, today, { showFutureRecurring })
+  }, [focusedTask, activeHolidays, rangeStart, rangeEnd, today, showFutureRecurring])
 
   const focusedProgress = useMemo(() => {
     if (!focusedTask || focusedTask.type !== 'progress') return null
@@ -135,13 +132,18 @@ export function CalendarApp() {
   }
 
   function navigate(dir: -1 | 1) {
-    if (view === 'month') setAnchor((a) => addMonths(a, dir))
+    if (view === 'month') setAnchor((a) => addMonths(`${a.slice(0, 7)}-01`, dir))
     else if (view === 'week') setAnchor((a) => addDays(a, dir * 7))
     else {
-      const next = addDays(anchor, dir)
+      const next = addDays(selected, dir)
       setAnchor(next)
       setSelected(next)
     }
+  }
+
+  function changeView(nextView: ViewMode) {
+    setAnchor(selected)
+    setView(nextView)
   }
 
   function goToday() {
@@ -210,15 +212,30 @@ export function CalendarApp() {
         selected={selected}
         holidayEnabled={state.holidayModeEnabled}
         trashCount={state.trash.length}
-        onViewChange={setView}
+        onViewChange={changeView}
         onPrev={() => navigate(-1)}
         onNext={() => navigate(1)}
         onToday={goToday}
         onJump={handleJump}
         onOpenHoliday={() => setHolidayOpen(true)}
         onOpenTrash={() => setTrashOpen(true)}
+        onOpenTasks={() => setTasksOpen(true)}
+        onOpenBackup={() => setBackupOpen(true)}
+        sidebarVisible={sidebarVisible}
+        onToggleSidebar={() => setSidebarVisible((visible) => !visible)}
+        showFutureRecurring={showFutureRecurring}
+        onToggleFutureRecurring={() => setShowFutureRecurring((visible) => !visible)}
         onCreate={openCreate}
       />
+
+      {focusedTask && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-blue-50 px-5 py-2 text-sm">
+          <span className="truncate">任务视图：{focusedTask.name}</span>
+          <button type="button" className="shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1 text-xs hover:bg-blue-100" onClick={clearFocus}>
+            退出任务视图
+          </button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
@@ -228,7 +245,6 @@ export function CalendarApp() {
                 anchor={anchor}
                 today={today}
                 selected={selected}
-                instanceMap={instanceMap}
                 holidays={activeHolidays}
                 onSelect={handleSelect}
                 focusedTaskId={focusedTaskId}
@@ -241,7 +257,6 @@ export function CalendarApp() {
                 anchor={anchor}
                 today={today}
                 selected={selected}
-                instanceMap={instanceMap}
                 holidays={activeHolidays}
                 onSelect={handleSelect}
                 focusedTaskId={focusedTaskId}
@@ -268,7 +283,7 @@ export function CalendarApp() {
           </div>
         </main>
 
-        {view !== 'day' && (
+        {view !== 'day' && sidebarVisible && (
           <DaySidebar
             selected={selected}
             today={today}
@@ -282,11 +297,30 @@ export function CalendarApp() {
             onFocusTask={focusTask}
             onTogglePause={togglePause}
             focusedTaskId={focusedTaskId}
-            onClearFocus={clearFocus}
             onCreate={openCreate}
           />
         )}
       </div>
+
+      <TaskListDialog
+        open={tasksOpen}
+        onOpenChange={setTasksOpen}
+        tasks={state.tasks}
+        onOpenTask={openEdit}
+      />
+
+      <BackupDialog
+        open={backupOpen}
+        onOpenChange={setBackupOpen}
+        state={state}
+        onRestore={(backup) => {
+          if (!restoreBackup(backup)) return false
+          setFocusedTaskId(null)
+          setEditingTask(null)
+          setFormOpen(false)
+          return true
+        }}
+      />
 
       <TaskForm
         open={formOpen}

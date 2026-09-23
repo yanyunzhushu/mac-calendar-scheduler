@@ -23,6 +23,8 @@ export interface BaseTask {
   /** 实例完成记录：key 为日期键，value 为完成时间戳 */
   completions: Record<DateKey, number>
   paused?: boolean
+  /** 周期/复习任务的固定终止日期；取消终止时清除 */
+  stoppedDate?: DateKey
   /** 所属任务组 ID */
   groupId?: string
   /** 学习主题 ID（仅用于复习任务分类） */
@@ -103,6 +105,7 @@ export type InstanceStatus =
   | 'missed' // 已错过
   | 'future' // 未来待完成
   | 'holiday' // 处于假期暂停
+  | 'stopped' // 终止当天尚未完成，不可继续完成
   | 'reminder' // 长期任务：仅作为提醒常驻，无完成/错过概念
 
 export interface TaskGroup {

@@ -30,8 +30,11 @@ export function addDays(key: DateKey, days: number): DateKey {
 
 export function addMonths(key: DateKey, months: number): DateKey {
   const d = fromKey(key)
-  d.setMonth(d.getMonth() + months)
-  return toKey(d)
+  const targetMonth = new Date(d.getFullYear(), d.getMonth() + months, 1)
+  const lastDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate()
+  // 目标月份没有对应日号时取月末，避免 1 月 31 日加一月溢出到 3 月。
+  targetMonth.setDate(Math.min(d.getDate(), lastDay))
+  return toKey(targetMonth)
 }
 
 /** 两个日期键之间相差的天数 (b - a) */

@@ -3,7 +3,7 @@
 import { formatLong, type DateKey } from '@/lib/date-utils'
 import type { Holiday, Task, TaskInstance } from '@/lib/types'
 import { findHoliday } from '@/lib/task-engine'
-import { InstanceItem } from './instance-item'
+import { TaskCompletionSummary, TaskSections } from './task-sections'
 
 interface DayViewProps {
   selected: DateKey
@@ -38,7 +38,10 @@ export function DayView({
   return (
     <div className="macos-scroll mx-auto flex h-full w-full max-w-2xl flex-col gap-3 overflow-y-auto p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{formatLong(selected)}</h2>
+        <div>
+          <h2 className="text-lg font-semibold">{formatLong(selected)}</h2>
+          <TaskCompletionSummary instances={instances} tasks={tasks} today={today} />
+        </div>
         {selected === today && (
           <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground">
             今天
@@ -53,22 +56,19 @@ export function DayView({
       {instances.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">这一天没有安排任务</p>
       ) : (
-        instances.map((inst, i) => (
-          <InstanceItem
-            key={`${inst.taskId}-${i}`}
-            inst={inst}
-            task={tasks.find((t) => t.id === inst.taskId)}
-            today={today}
-            onComplete={() => onComplete(inst.taskId, inst.date)}
-            onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
-            onToggleAck={onToggleAck}
-            onOpenTask={() => onOpenTask(inst.taskId)}
-            onFocusTask={onFocusTask}
-            onTogglePause={onTogglePause}
-            isFocused={focusedTaskId === inst.taskId}
-            focusedTaskId={focusedTaskId}
-          />
-        ))
+        <TaskSections
+          key={selected}
+          today={today}
+          instances={instances}
+          tasks={tasks}
+          onComplete={onComplete}
+          onUncomplete={onUncomplete}
+          onToggleAck={onToggleAck}
+          onOpenTask={onOpenTask}
+          onFocusTask={onFocusTask}
+          onTogglePause={onTogglePause}
+          focusedTaskId={focusedTaskId}
+        />
       )}
     </div>
   )

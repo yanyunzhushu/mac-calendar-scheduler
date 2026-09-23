@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { formatLong, type DateKey } from '@/lib/date-utils'
 import type { Holiday, Task, TaskInstance } from '@/lib/types'
 import { findHoliday } from '@/lib/task-engine'
-import { InstanceItem } from './instance-item'
+import { TaskCompletionSummary, TaskSections } from './task-sections'
 
 interface DaySidebarProps {
   selected: DateKey
@@ -43,7 +43,7 @@ export function DaySidebar({
   const holiday = findHoliday(selected, holidays)
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-card/40">
+    <aside id="calendar-day-sidebar" className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-card/40">
       <div className="border-b border-border p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -51,6 +51,7 @@ export function DaySidebar({
             <h2 className="text-balance text-sm font-semibold leading-snug">
               {formatLong(selected)}
             </h2>
+            <TaskCompletionSummary instances={instances} tasks={tasks} today={today} />
           </div>
           <div className="flex items-center gap-1">
             {focusedTaskId && onClearFocus && (
@@ -76,24 +77,19 @@ export function DaySidebar({
         {instances.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">这一天没有安排任务</p>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {instances.map((inst, i) => (
-              <InstanceItem
-                key={`${inst.taskId}-${i}`}
-                inst={inst}
-                task={tasks.find((t) => t.id === inst.taskId)}
-                today={today}
-                onComplete={() => onComplete(inst.taskId, inst.date)}
-                onUncomplete={() => onUncomplete(inst.taskId, inst.date)}
-                onToggleAck={onToggleAck}
-                onOpenTask={() => onOpenTask(inst.taskId)}
-                onFocusTask={onFocusTask}
-                onTogglePause={onTogglePause}
-                isFocused={focusedTaskId === inst.taskId}
-                focusedTaskId={focusedTaskId}
-              />
-            ))}
-          </div>
+          <TaskSections
+            key={selected}
+            today={today}
+            instances={instances}
+            tasks={tasks}
+            onComplete={onComplete}
+            onUncomplete={onUncomplete}
+            onToggleAck={onToggleAck}
+            onOpenTask={onOpenTask}
+            onFocusTask={onFocusTask}
+            onTogglePause={onTogglePause}
+            focusedTaskId={focusedTaskId}
+          />
         )}
       </div>
 

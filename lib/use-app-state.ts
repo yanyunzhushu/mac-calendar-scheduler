@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { addDays, compareKey } from './date-utils'
+import { addDays, compareKey, todayKey } from './date-utils'
 import type { AppState, Holiday, LongTermTask, ProgressTask, Task } from './types'
 
 const STORAGE_KEY = 'calendar-app-state'
@@ -47,6 +47,14 @@ function normalizeHolidays(holidays: Holiday[]): Holiday[] {
   }, [])
 }
 
+/** 旧数据未记录终止日期，以升级后首次加载日固定边界，避免边界逐日后移。 */
+function migrateStoppedTask(task: Task, today: string): Task {
+  if ((task.type === 'recurring' || task.type === 'ebbinghaus') && task.paused && !task.stoppedDate) {
+    return { ...task, stoppedDate: today }
+  }
+  return task
+}
+
 /** 从 localStorage 读取状态，失败时返回空状态 */
 function loadState(): AppState {
   try {
@@ -54,12 +62,16 @@ function loadState(): AppState {
     if (raw) {
       const parsed = JSON.parse(raw) as AppState
       if (Array.isArray(parsed.tasks) && Array.isArray(parsed.holidays)) {
+        const today = todayKey()
         return {
           ...parsed,
+          tasks: parsed.tasks.map((task) => migrateStoppedTask(task, today)),
           holidays: normalizeHolidays(parsed.holidays),
           groups: Array.isArray(parsed.groups) ? parsed.groups : [],
           themes: Array.isArray(parsed.themes) ? parsed.themes : [],
-          trash: Array.isArray(parsed.trash) ? parsed.trash : [],
+          trash: Array.isArray(parsed.trash)
+            ? parsed.trash.map((item) => ({ ...item, task: migrateStoppedTask(item.task, today) }))
+            : [],
         }
       }
     }
@@ -134,6 +146,16 @@ export function useAppState() {
       const task = prev.tasks.find((t) => t.id === id)
       if (!task) return prev
       const updated = { ...task, ...updates } as Task
+      if (
+        (task.type === 'single' || task.type === 'recurring') &&
+        (updated.type === 'single' || updated.type === 'recurring') &&
+        !task.countingMode && updated.countingMode
+      ) {
+        // 仅在保存并开启计数模式时转换，使用最新记录，避免把时间戳当成完成次数。
+        updated.completions = Object.fromEntries(
+          Object.entries(task.completions).map(([date, value]) => [date, value > 0 ? 1 : 0]),
+        )
+      }
       return { ...prev, tasks: prev.tasks.map((t) => (t.id === id ? updated : t)) }
     })
   }, [])
@@ -231,6 +253,10 @@ export function useAppState() {
     setState((prev) => {
       const task = prev.tasks.find((t) => t.id === taskId)
       if (!task) return prev
+      if (
+        (task.type === 'recurring' || task.type === 'ebbinghaus') && task.paused &&
+        compareKey(date, task.stoppedDate ?? todayKey()) >= 0
+      ) return prev
       if (task.type === 'progress') {
         // 进度任务：累加 dailyCompletions[date]（支持链式完成）
         const pt = task as ProgressTask
@@ -300,7 +326,9 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
     setState((prev) => {
       const task = prev.tasks.find((t) => t.id === taskId)
       if (!task) return prev
-      const updated = { ...task, paused: !task.paused } as Task
+      const updated: Task = task.type === 'recurring' || task.type === 'ebbinghaus'
+        ? { ...task, paused: !task.paused, stoppedDate: task.paused ? undefined : todayKey() }
+        : { ...task, paused: !task.paused }
       return { ...prev, tasks: prev.tasks.map((t) => (t.id === taskId ? updated : t)) }
     })
   }, [])
@@ -324,6 +352,25 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
 
   const setHolidayModeEnabled = useCallback((enabled: boolean) => {
     setState((prev) => ({ ...prev, holidayModeEnabled: enabled }))
+  }, [])
+
+  /** 恢复前先确认本地存储可写，失败时保留当前界面和数据。 */
+  const restoreBackup = useCallback((backup: AppState): boolean => {
+    const today = todayKey()
+    const restored: AppState = {
+      ...backup,
+      tasks: backup.tasks.map((task) => migrateStoppedTask(task, today)),
+      holidays: normalizeHolidays(backup.holidays),
+      trash: backup.trash.map((item) => ({ ...item, task: migrateStoppedTask(item.task, today) })),
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(restored))
+    } catch (error) {
+      console.error('恢复备份失败，当前数据未修改:', error)
+      return false
+    }
+    setState(restored)
+    return true
   }, [])
 
   const addHoliday = useCallback((start: string, end: string) => {
@@ -380,6 +427,7 @@ if ((task.type === 'single' || task.type === 'recurring') && (task as any).count
     deleteHoliday,
     createTheme,
     deleteTheme,
+    restoreBackup,
   }
 }
 

@@ -65,7 +65,7 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
   return (
     <div
       className={cn(
-        'relative flex items-start gap-3 rounded-xl border bg-card p-3 transition-colors',
+        'relative flex flex-col gap-2 rounded-xl border bg-card p-3 transition-colors',
         isFocused ? 'border-blue-500 ring-2 ring-blue-200' : 'border-border',
         inst.status === 'completed' && !isFocused && 'border-emerald-200 bg-emerald-50/60',
         inst.status === 'missed' && !isFocused && 'border-red-200 bg-red-50/60',
@@ -76,7 +76,7 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
     >
       {/* 主体内容：聚焦其它任务时淡出 */}
       <div
-        className="flex min-w-0 flex-1 items-start gap-3"
+        className="flex w-full min-w-0 items-start gap-3"
         style={{ opacity: focusActive && !isFocused ? 0.4 : 1 }}
       >
       <button
@@ -87,6 +87,7 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
         )}
         style={{ backgroundColor: dotColor(inst) }}
         onClick={() => onFocusTask?.(inst.taskId)}
+        aria-label={`${isFocused ? '退出任务视图' : '在日历上查看'}：${inst.taskName}`}
         title={focusActive ? (isFocused ? '退出任务视图' : '切换到此任务') : undefined}
       />
       <div className="min-w-0 flex-1">
@@ -163,10 +164,9 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
       </div>
       </div>
 
-      {/* 右侧按钮列：标记按钮居中，视图按钮靠右下 */}
-      <div className="flex shrink-0 flex-col items-center justify-center self-stretch">
-        {/* 完成/撤销按钮：上下居中，随内容一起淡出 */}
-        <div className="mt-0.5" style={{ opacity: focusActive && !isFocused ? 0.4 : 1 }}>
+      {/* 操作区独占一行，避免较长的操作文案挤压任务名称。 */}
+      <div className="flex w-full items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1" style={{ opacity: focusActive && !isFocused ? 0.4 : 1 }}>
           {canAck ? (
             inst.acknowledged ? (
               <Button
@@ -199,13 +199,15 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
                   onClick={onUncomplete}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  撤销 ({inst.count})
+                  撤销一次
                 </Button>
               )}
-              <Button size="sm" className="h-8 min-w-[60px] gap-1 text-xs" onClick={onComplete}>
-                <Check className="h-3.5 w-3.5" />
-                标记
-              </Button>
+              {(inst.actionable || (inst.taskType === 'progress' && inst.status === 'completed' && !task?.paused)) && (
+                <Button size="sm" className="h-8 min-w-[60px] gap-1 text-xs" onClick={onComplete}>
+                  <Check className="h-3.5 w-3.5" />
+                  {inst.count > 0 ? '再完成一次' : '完成'}
+                </Button>
+              )}
             </>
           ) : inst.status === 'completed' ? (
             <Button
@@ -215,23 +217,23 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
               onClick={onUncomplete}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              撤销
+              撤销完成
             </Button>
           ) : inst.actionable ? (
             <Button size="sm" className="h-8 min-w-[60px] gap-1 text-xs" onClick={onComplete}>
               <Check className="h-3.5 w-3.5" />
-              标记
+              完成
             </Button>
           ) : null}
         </div>
 
-        {/* 切换按钮：贴底部边框，靠右，始终全不透明度 */}
+        {/* 查看日历按钮扩大点击区域，始终保持可见。 */}
         {onFocusTask && (
           <Button
             variant={isFocused ? 'default' : 'outline'}
             size="icon"
             className={cn(
-              'mt-auto -mb-2 h-6 w-6 self-end transition-all',
+              'h-9 w-9 shrink-0 transition-all',
               isFocused
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : focusActive
@@ -240,8 +242,9 @@ export function InstanceItem({ inst, task, today, onComplete, onUncomplete, onTo
             )}
             onClick={() => onFocusTask?.(inst.taskId)}
             title={isFocused ? '退出任务视图' : '在日历上查看'}
+            aria-label={`${isFocused ? '退出任务视图' : '在日历上查看'}：${inst.taskName}`}
           >
-            <Eye className="h-3 w-3" />
+            <Eye className="h-4 w-4" />
           </Button>
         )}
       </div>

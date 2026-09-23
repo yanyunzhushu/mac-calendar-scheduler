@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Palmtree, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, DatabaseBackup, ListTodo, Palmtree, PanelRightClose, PanelRightOpen, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { fromKey, type DateKey } from '@/lib/date-utils'
+import { parseDateInput } from '@/lib/date-validation'
 
 const MONTHS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
 
@@ -14,47 +15,6 @@ function formatDate(key: DateKey): string {
 }
 
 export type ViewMode = 'month' | 'week' | 'day'
-
-/** 解析用户输入的日期字符串，支持多种格式：
- *  YYYY.M / YYYY-MM / YYYYMM / YYYY.M.D / YYYY-MM-DD / YYYYMMDD 等 */
-function parseDateInput(input: string): DateKey | null {
-  const trimmed = input.trim()
-  if (!trimmed) return null
-
-  // 尝试按分隔符拆分：支持 . - /
-  const parts = trimmed.split(/[.\-/]/).filter(Boolean)
-  if (parts.length === 2 || parts.length === 3) {
-    const y = parseInt(parts[0], 10)
-    const m = parseInt(parts[1], 10)
-    if (y < 2000 || y > 2100 || m < 1 || m > 12) return null
-    const mm = String(m).padStart(2, '0')
-
-    if (parts.length === 2) {
-      return `${y}-${mm}-01`
-    }
-    const d = parseInt(parts[2], 10)
-    if (d < 1 || d > 31) return null
-    const dd = String(d).padStart(2, '0')
-    return `${y}-${mm}-${dd}`
-  }
-
-  // 无分隔符：纯数字，按位数判断
-  const digits = trimmed.replace(/\D/g, '')
-  if (digits.length === 6) {
-    const y = parseInt(digits.substring(0, 4), 10)
-    const m = parseInt(digits.substring(4, 6), 10)
-    if (y < 2000 || y > 2100 || m < 1 || m > 12) return null
-    return `${y}-${String(m).padStart(2, '0')}-01`
-  }
-  if (digits.length === 8) {
-    const y = parseInt(digits.substring(0, 4), 10)
-    const m = parseInt(digits.substring(4, 6), 10)
-    const d = parseInt(digits.substring(6, 8), 10)
-    if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-  }
-  return null
-}
 
 function formatInputHint(key: DateKey): string {
   // 显示当月，用户可覆盖输入具体日期
@@ -74,6 +34,12 @@ interface CalendarHeaderProps {
   onJump: (key: DateKey) => void
   onOpenHoliday: () => void
   onOpenTrash: () => void
+  onOpenTasks: () => void
+  onOpenBackup: () => void
+  sidebarVisible: boolean
+  onToggleSidebar: () => void
+  showFutureRecurring: boolean
+  onToggleFutureRecurring: () => void
   onCreate: () => void
 }
 
@@ -96,21 +62,36 @@ export function CalendarHeader({
   onJump,
   onOpenHoliday,
   onOpenTrash,
+  onOpenTasks,
+  onOpenBackup,
+  sidebarVisible,
+  onToggleSidebar,
+  showFutureRecurring,
+  onToggleFutureRecurring,
   onCreate,
 }: CalendarHeaderProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [inputValue, setInputValue] = useState(() => formatInputHint(anchor))
+  const [jumpError, setJumpError] = useState<string | null>(null)
+  const inputDirty = useRef(false)
+  const invalidDateMessage = '请输入 2000—2100 年内的有效日期（YYYY-MM 或 YYYY-MM-DD）'
 
-  // 外部导航（箭头/回到今天）时同步 input 显示值
+  // 外部导航时同步输入；未改动输入框的失焦不触发跳转。
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.value = formatInputHint(anchor)
-    }
+    setInputValue(formatInputHint(anchor))
+    setJumpError(null)
+    inputDirty.current = false
   }, [anchor])
 
-  function handleJumpAndKeepFocus(key: DateKey) {
+  function handleJump() {
+    const key = parseDateInput(inputValue)
+    if (!key) {
+      setJumpError(invalidDateMessage)
+      return
+    }
+    inputDirty.current = false
+    setJumpError(null)
+    setInputValue(formatInputHint(key))
     onJump(key)
-    // 跳转后光标留在输入框
-    setTimeout(() => inputRef.current?.focus(), 0)
   }
 
   return (
@@ -119,23 +100,34 @@ export function CalendarHeader({
         <h1 className="text-xl font-semibold tracking-tight tabular-nums">
           {formatDate(selected)}
         </h1>
-        <input
-          ref={inputRef}
-          type="text"
-          defaultValue={formatInputHint(anchor)}
-          placeholder="YYYY-MM 或 YYYYMMDD"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              const key = parseDateInput((e.target as HTMLInputElement).value)
-              if (key) handleJumpAndKeepFocus(key)
-            }
-          }}
-          onBlur={(e) => {
-            const key = parseDateInput(e.target.value)
-            if (key) handleJumpAndKeepFocus(key)
-          }}
-          className="h-8 w-36 rounded-md border border-border bg-background px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring"
-        />
+        <div className="flex flex-col gap-1">
+          <input
+            type="text"
+            value={inputValue}
+            aria-label="跳转日期"
+            aria-invalid={!!jumpError}
+            aria-describedby={jumpError ? 'date-jump-error' : undefined}
+            placeholder="YYYY-MM 或 YYYYMMDD"
+            onChange={(e) => {
+              setInputValue(e.target.value)
+              inputDirty.current = true
+              if (jumpError) setJumpError(parseDateInput(e.target.value) ? null : invalidDateMessage)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleJump()
+              }
+            }}
+            onBlur={() => {
+              if (inputDirty.current) handleJump()
+            }}
+            className="h-8 w-36 rounded-md border border-border bg-background px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring aria-invalid:border-red-500"
+          />
+          {jumpError && (
+            <p id="date-jump-error" role="alert" className="max-w-56 text-xs text-red-500">{jumpError}</p>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrev}>
             <ChevronLeft className="h-4 w-4" />
@@ -151,7 +143,7 @@ export function CalendarHeader({
         </div>
       </div>
 
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <div className="flex shrink-0 items-center rounded-lg border border-border bg-muted/50 p-0.5">
           {(['month', 'week', 'day'] as ViewMode[]).map((v) => (
             <button
@@ -169,6 +161,23 @@ export function CalendarHeader({
             </button>
           ))}
         </div>
+        {view !== 'day' && (
+          <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={onToggleSidebar} aria-expanded={sidebarVisible} aria-controls="calendar-day-sidebar">
+            {sidebarVisible ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            {sidebarVisible ? '收起侧栏' : '展开侧栏'}
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={onOpenTasks}>
+          <ListTodo className="h-4 w-4" />
+          全部任务
+        </Button>
+        <Button variant={showFutureRecurring ? 'default' : 'outline'} size="sm" className="h-8" aria-pressed={showFutureRecurring} onClick={onToggleFutureRecurring} title="显示周期任务的未来计划，仅供预览">
+          显示未来计划
+        </Button>
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground" onClick={onOpenBackup}>
+          <DatabaseBackup className="h-4 w-4" />
+          备份
+        </Button>
         <Button
           variant={holidayEnabled ? 'default' : 'outline'}
           size="sm"

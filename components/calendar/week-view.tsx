@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils'
 import { compareKey, fromKey, getWeekDays, weekdayLabel, type DateKey } from '@/lib/date-utils'
 import type { Holiday, TaskInstance } from '@/lib/types'
 import { findHoliday } from '@/lib/task-engine'
-import { dotColor, isFaded } from '@/lib/status-visuals'
 
 interface FocusedProgress {
   startDate: DateKey
@@ -16,7 +15,6 @@ interface WeekViewProps {
   anchor: DateKey
   today: DateKey
   selected: DateKey
-  instanceMap: Record<DateKey, TaskInstance[]>
   holidays: Holiday[]
   onSelect: (key: DateKey) => void
   focusedTaskId?: string | null
@@ -28,7 +26,6 @@ export function WeekView({
   anchor,
   today,
   selected,
-  instanceMap,
   holidays,
   onSelect,
   focusedTaskId,
@@ -45,7 +42,6 @@ export function WeekView({
         const inMonth = d.getMonth() === currentMonth
         const isToday = key === today
         const isSelected = key === selected
-        const instances = instanceMap[key] ?? []
         const holiday = findHoliday(key, holidays)
 
         // 任务视图：判断该天是否有聚焦任务的实例
@@ -56,7 +52,7 @@ export function WeekView({
         // 长期任务聚焦：没有完成/错过概念，使用粉色提醒染色
         const focusedIsReminder = focusedInsts?.every((i) => i.taskType === 'longterm') ?? false
         const focusedAllUncompleted = hasFocused && !focusedAllCompleted && !focusedIsReminder
-        const isFuture = hasFocused && compareKey(key, today) > 0
+        const isInactive = hasFocused && (compareKey(key, today) > 0 || focusedInsts?.every((i) => i.status === 'stopped'))
 
         // 持续推进任务进度条染色
         let barColor: 'green' | 'red' | 'gray' | null = null
@@ -73,28 +69,27 @@ export function WeekView({
         }
 
         return (
-          <button
+          <div
             key={key}
-            type="button"
             onClick={() => onSelect(key)}
             className={cn(
-              'flex flex-col gap-2 border-r border-border p-3 text-left transition-colors',
-              'hover:bg-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+              'flex min-w-0 flex-col gap-2 border-r border-border p-2 text-left transition-colors',
+              'hover:bg-accent/60',
               !inMonth && 'bg-muted/60 text-muted-foreground/50',
               isSelected && 'bg-accent',
               // 非进度任务的原有聚焦染色（实例级）— 当月使用完整饱和度
-              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-50',
-              !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-50',
-              !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && inMonth && 'bg-pink-50 ring-2 ring-inset ring-pink-400',
-              !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && !inMonth && 'bg-pink-50/50 ring-2 ring-inset ring-pink-400/40',
-              !focusedProgress && focusedTaskId && hasFocused && !isFuture && inMonth && 'ring-2 ring-inset',
-              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'ring-emerald-400',
-              !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && inMonth && 'ring-red-400',
-              !focusedProgress && focusedTaskId && hasFocused && isFuture && inMonth && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
+              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isInactive && inMonth && 'bg-emerald-50',
+              !focusedProgress && focusedTaskId && focusedAllUncompleted && !isInactive && inMonth && 'bg-red-50',
+              !focusedProgress && focusedTaskId && focusedIsReminder && !isInactive && inMonth && 'bg-pink-50 ring-2 ring-inset ring-pink-400',
+              !focusedProgress && focusedTaskId && focusedIsReminder && !isInactive && !inMonth && 'bg-pink-50/50 ring-2 ring-inset ring-pink-400/40',
+              !focusedProgress && focusedTaskId && hasFocused && !isInactive && inMonth && 'ring-2 ring-inset',
+              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isInactive && inMonth && 'ring-emerald-400',
+              !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isInactive && inMonth && 'ring-red-400',
+              !focusedProgress && focusedTaskId && hasFocused && isInactive && inMonth && 'bg-gray-50 ring-2 ring-inset ring-gray-300',
               // 非进度任务聚焦染色 — 相邻月份降低饱和度以便区分
-              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && !inMonth && 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400/40',
-              !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && !inMonth && 'bg-red-50/50 ring-2 ring-inset ring-red-400/40',
-              !focusedProgress && focusedTaskId && hasFocused && isFuture && !inMonth && 'bg-gray-50/50 ring-2 ring-inset ring-gray-300/40',
+              !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isInactive && !inMonth && 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400/40',
+              !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isInactive && !inMonth && 'bg-red-50/50 ring-2 ring-inset ring-red-400/40',
+              !focusedProgress && focusedTaskId && hasFocused && isInactive && !inMonth && 'bg-gray-50/50 ring-2 ring-inset ring-gray-300/40',
               // 进度任务进度条染色 — 当月使用完整饱和度
               barColor === 'green' && inMonth && 'bg-emerald-50 ring-2 ring-inset ring-emerald-400',
               barColor === 'red' && inMonth && 'bg-red-50 ring-2 ring-inset ring-red-400',
@@ -105,7 +100,16 @@ export function WeekView({
               barColor === 'gray' && !inMonth && 'bg-gray-50/50 ring-2 ring-inset ring-gray-300/40',
             )}
           >
-            <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              aria-label={`选择 ${key} ${weekdayLabel(key)}`}
+              aria-pressed={isSelected}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelect(key)
+              }}
+              className="flex w-full shrink-0 flex-col items-center gap-1 rounded-md py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <span className="text-xs text-muted-foreground">
                 {weekdayLabel(key)}
               </span>
@@ -114,19 +118,19 @@ export function WeekView({
                   'flex h-8 w-8 items-center justify-center rounded-full text-sm tabular-nums',
                   isToday && 'bg-primary font-semibold text-primary-foreground',
                   // 非进度任务日期数字 — 当月
-                  !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && inMonth && 'bg-emerald-200 text-emerald-900',
-                  !focusedProgress && focusedTaskId && focusedAllUncompleted && !isFuture && inMonth && 'bg-red-200 text-red-900',
-                  !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && inMonth && 'bg-pink-200 text-pink-900',
-                  !focusedProgress && focusedTaskId && focusedIsReminder && !isFuture && !inMonth && 'bg-pink-200/60 text-pink-900/70',
-                  !focusedProgress && focusedTaskId && hasFocused && isFuture && inMonth && 'bg-gray-200 text-gray-500',
+                  !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isInactive && inMonth && 'bg-emerald-200 text-emerald-900',
+                  !focusedProgress && focusedTaskId && focusedAllUncompleted && !isInactive && inMonth && 'bg-red-200 text-red-900',
+                  !focusedProgress && focusedTaskId && focusedIsReminder && !isInactive && inMonth && 'bg-pink-200 text-pink-900',
+                  !focusedProgress && focusedTaskId && focusedIsReminder && !isInactive && !inMonth && 'bg-pink-200/60 text-pink-900/70',
+                  !focusedProgress && focusedTaskId && hasFocused && isInactive && inMonth && 'bg-gray-200 text-gray-500',
                   // 进度任务日期数字 — 当月
                   barColor === 'green' && inMonth && 'bg-emerald-200 text-emerald-900',
                   barColor === 'red' && inMonth && 'bg-red-200 text-red-900',
                   barColor === 'gray' && inMonth && 'bg-gray-200 text-gray-500',
                   // 非进度任务日期数字 — 相邻月份降低饱和度
-                  !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isFuture && !inMonth && 'bg-emerald-200/60 text-emerald-900/70',
-                  !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isFuture && !inMonth && 'bg-red-200/60 text-red-900/70',
-                  !focusedProgress && focusedTaskId && hasFocused && isFuture && !inMonth && 'bg-gray-200/60 text-gray-500/70',
+                  !focusedProgress && focusedTaskId && hasFocused && focusedAllCompleted && !isInactive && !inMonth && 'bg-emerald-200/60 text-emerald-900/70',
+                  !focusedProgress && focusedTaskId && hasFocused && focusedAllUncompleted && !isInactive && !inMonth && 'bg-red-200/60 text-red-900/70',
+                  !focusedProgress && focusedTaskId && hasFocused && isInactive && !inMonth && 'bg-gray-200/60 text-gray-500/70',
                   // 进度任务日期数字 — 相邻月份降低饱和度
                   barColor === 'green' && !inMonth && 'bg-emerald-200/60 text-emerald-900/70',
                   barColor === 'red' && !inMonth && 'bg-red-200/60 text-red-900/70',
@@ -140,30 +144,8 @@ export function WeekView({
                   假期
                 </span>
               )}
-            </div>
-            {!focusedTaskId && (
-              <div className="macos-scroll flex flex-1 flex-col gap-1 overflow-y-auto">
-                {instances.map((inst, i) => (
-                  <div
-                    key={`${inst.taskId}-${inst.date}-${inst.count ?? 0}-${i}`}
-                    className="flex items-center gap-1.5 rounded-md bg-muted/50 px-1.5 py-1"
-                    style={{ opacity: isFaded(inst.status) ? 0.55 : 1 }}
-                  >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: dotColor(inst) }}
-                    />
-                    <span className="truncate text-[11px] leading-tight">{inst.taskName}</span>
-                    {inst.status === 'completed' && inst.count != null && inst.count > 1 && (
-                      <span className="shrink-0 text-[9px] font-semibold leading-none text-emerald-600 tabular-nums">
-                        x{inst.count}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </button>
+            </button>
+          </div>
         )
       })}
     </div>

@@ -1,10 +1,9 @@
 import {
   addDays,
+  addMonths,
   compareKey,
   diffDays,
-  fromKey,
   isWithin,
-  toKey,
   type DateKey,
 } from './date-utils'
 import type {
@@ -20,6 +19,11 @@ import type {
   Task,
   TaskInstance,
 } from './types'
+
+export interface InstanceOptions {
+  /** 仅预览周期任务的未来安排；未来实例不可完成。默认保持只展示到今天。 */
+  showFutureRecurring?: boolean
+}
 
 // ---------- 持续进度任务 ----------
 export function findHoliday(key: DateKey, holidays: Holiday[]): Holiday | undefined {
@@ -57,8 +61,12 @@ export function generateRecurringInstances(
   rangeStart: DateKey,
   rangeEnd: DateKey,
   today: DateKey,
+  showFutureRecurring = false,
 ): TaskInstance[] {
   const out: TaskInstance[] = []
+  const stoppedDate = task.paused ? (task.stoppedDate ?? today) : undefined
+  // 已有完成记录即使落在终止日之后也保留；终止仅截断尚未完成的日程。
+  const lastCompletionDate = Object.keys(task.completions).filter((date) => !!task.completions[date]).sort().at(-1)
   let cur = task.startDate
   let idx = 0
   let guard = 0
@@ -68,13 +76,13 @@ export function generateRecurringInstances(
     guard++
     if (recurringReachedEnd(task.end, idx, cur)) break
     if (compareKey(cur, rangeEnd) > 0) break
+    if (stoppedDate && cur > stoppedDate && (!lastCompletionDate || cur > lastCompletionDate)) break
 
-    // 今天之后不再展示，但允许显示第一个未来发生日（即 startDate 在未来时）作为灰色标记，
-    // 与持续进度任务的行为保持一致。若 startDate 已在今天或之前，则不应在后续范围里补出未来标记。
-    if (compareKey(cur, today) > 0) {
+    // 默认只展示到今天，未来起始任务仅保留起始日灰色标记；开启预览后，
+    // 在当前范围内继续展开未来安排，仍遵守次数、结束日期与固定终止日期。
+    if (!showFutureRecurring && !stoppedDate && compareKey(cur, today) > 0) {
       if (out.length === 0 && idx === 0 && compareKey(cur, rangeStart) >= 0) {
         const counting = !!task.countingMode
-        const completed = !!task.completions[cur]
         out.push({
           taskId: task.id,
           taskName: task.name,
@@ -88,16 +96,17 @@ export function generateRecurringInstances(
       break
     }
 
-    if (compareKey(cur, rangeStart) >= 0) {
+    if (compareKey(cur, rangeStart) >= 0 && (!stoppedDate || cur <= stoppedDate || !!task.completions[cur])) {
       const counting = !!task.countingMode
       const completed = !!task.completions[cur]
+      const stopped = !!stoppedDate && cur >= stoppedDate
       out.push({
         taskId: task.id,
         taskName: task.name,
         taskType: 'recurring',
         date: cur,
-        status: resolveStatus(cur, today, completed),
-        actionable: counting ? compareKey(cur, today) <= 0 : !completed,
+        status: stopped && !completed ? 'stopped' : resolveStatus(cur, today, completed),
+        actionable: !stopped && compareKey(cur, today) <= 0 && (counting || !completed),
         count: counting ? (task.completions[cur] ?? 0) : undefined,
       })
     }
@@ -107,12 +116,30 @@ export function generateRecurringInstances(
     if (task.freq === 'daily') cur = addDays(cur, 1)
     else if (task.freq === 'weekly') cur = addDays(cur, 7)
     else if (task.freq === 'monthly') {
-      const d = fromKey(task.startDate)
-      const next = new Date(d.getFullYear(), d.getMonth() + idx, d.getDate())
-      cur = toKey(next)
+      // 始终基于原始起点，避免经过较短月份后永久漂移到 28/29 日。
+      cur = addMonths(task.startDate, idx)
     } else {
       cur = addDays(cur, Math.max(1, task.interval))
     }
+  }
+  if (task.freq === 'monthly') {
+    const displayedDates = new Set(out.map((inst) => inst.date))
+    // 月底规则修复前可能在溢出日期完成过任务。保留原日期与次数供查看/撤销，
+    // 不迁移完成记录，也不为这些已退出日程的历史日期提供新增完成操作。
+    for (const [date, value] of Object.entries(task.completions)) {
+      if (!value || !isWithin(date, rangeStart, rangeEnd) || displayedDates.has(date)) continue
+      out.push({
+        taskId: task.id,
+        taskName: task.name,
+        taskType: 'recurring',
+        date,
+        status: 'completed',
+        actionable: false,
+        count: task.countingMode ? value : undefined,
+        meta: '历史完成记录',
+      })
+    }
+    out.sort((a, b) => compareKey(a.date, b.date))
   }
   return out
 }
@@ -126,6 +153,8 @@ export function generateEbbinghausInstances(
   today: DateKey,
 ): TaskInstance[] {
   const out: TaskInstance[] = []
+  const stoppedDate = task.paused ? (task.stoppedDate ?? today) : undefined
+  const lastCompletionDate = Object.keys(task.completions).filter((date) => !!task.completions[date]).sort().at(-1)
   const intervals = task.intervals.length ? task.intervals : [0]
   const lastGap = intervals[intervals.length - 1]
 
@@ -156,24 +185,24 @@ export function generateEbbinghausInstances(
       break
     }
 
-    // 终止后不再生成未来实例
-    if (task.paused && compareKey(date, today) > 0) break
+    if (stoppedDate && date > stoppedDate && (!lastCompletionDate || date > lastCompletionDate)) break
 
     if (compareKey(date, rangeEnd) > 0) break
-    if (compareKey(date, rangeStart) < 0) {
+    if (compareKey(date, rangeStart) < 0 || (stoppedDate && date > stoppedDate && !task.completions[date])) {
       round++
       prevDate = date
       continue
     }
 
     const completed = !!task.completions[date]
+    const stopped = !!stoppedDate && date >= stoppedDate
     out.push({
       taskId: task.id,
       taskName: task.name,
       taskType: 'ebbinghaus',
       date,
-      status: resolveStatus(date, today, completed),
-      actionable: !completed,
+      status: stopped && !completed ? 'stopped' : resolveStatus(date, today, completed),
+      actionable: !stopped && !completed,
       meta: `第 ${round + 1} 次复习`,
     })
     round++
@@ -475,12 +504,13 @@ export function generateInstancesForTask(
   rangeStart: DateKey,
   rangeEnd: DateKey,
   today: DateKey,
+  options: InstanceOptions = {},
 ): TaskInstance[] {
   let instances: TaskInstance[]
   if (task.type === 'single') {
     instances = generateSingleInstances(task, rangeStart, rangeEnd, today)
   } else if (task.type === 'recurring') {
-    instances = generateRecurringInstances(task, rangeStart, rangeEnd, today)
+    instances = generateRecurringInstances(task, rangeStart, rangeEnd, today, options.showFutureRecurring)
   } else if (task.type === 'ebbinghaus') {
     instances = generateEbbinghausInstances(task, rangeStart, rangeEnd, today)
   } else if (task.type === 'longterm') {
@@ -502,10 +532,11 @@ export function buildInstanceMap(
   rangeStart: DateKey,
   rangeEnd: DateKey,
   today: DateKey,
+  options: InstanceOptions = {},
 ): Record<DateKey, TaskInstance[]> {
   const map: Record<DateKey, TaskInstance[]> = {}
   for (const task of tasks) {
-    const instances = generateInstancesForTask(task, holidays, rangeStart, rangeEnd, today)
+    const instances = generateInstancesForTask(task, holidays, rangeStart, rangeEnd, today, options)
     for (const inst of instances) {
       if (!map[inst.date]) map[inst.date] = []
       map[inst.date].push(inst)
