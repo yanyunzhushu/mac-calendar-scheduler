@@ -1,37 +1,11 @@
 # 备份与恢复
 
-> ⚠️ **占位文件 — 当前不适用**
+日程数据保存在浏览器 `localStorage`（键名 `calendar-app-state`）中。使用 `pnpm dev` 启动本地服务后，页面顶部的「备份」入口可以将完整状态保存为 JSON 文件，位置为仓库根目录的 `backups/`。
 
-「日程安排」的数据存储在浏览器 `localStorage` 中，无自动备份机制。
+- `backups/` 由本地服务按需创建，已被 `.gitignore` 排除，不会随 Git 提交或推送。
+- 点击「保存备份到项目目录」才会创建手动备份；应用不会定时自动备份。
+- 从备份恢复时，先将当前数据保存到 `backups/`，保存成功后才替换浏览器数据。
+- 恢复会替换所有当前数据（含回收站），不会合并任务。导入文件上限为 10 MB。
+- `pnpm dev:next` 和部署后的纯静态站点没有本地备份服务，无法直接写入仓库目录；请使用 `pnpm dev` 操作备份。
 
-## 当前手动备份方式
-
-在浏览器控制台（F12）执行：
-
-**导出**：
-```js
-copy(localStorage.getItem('calendar-app-state'))
-// 粘贴到本地文件保存
-```
-
-**恢复**：
-```js
-localStorage.setItem('calendar-app-state', '<JSON字符串>')
-location.reload()
-```
-
-**清空**：
-```js
-localStorage.removeItem('calendar-app-state')
-location.reload()
-```
-
-## 风险说明
-
-- 清除浏览器数据 → 数据永久丢失
-- 隐私模式/无痕浏览 → 会话结束后数据清除
-- 建议定期手动导出备份
-
-## 未来方向
-
-若迁移至 Tauri，见 CLAUDE.md 迁移路线图，数据将存储到文件系统（SQLite 或 JSON 文件），可实现自动备份。
+清除浏览器数据会丢失当前日程，请定期手动保存备份。

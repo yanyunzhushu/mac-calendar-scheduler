@@ -14,20 +14,30 @@ interface BackupDialogProps {
   onRestore: (state: AppState) => boolean
 }
 
-function downloadBackup(state: AppState, prefix = '日程安排备份') {
-  const now = new Date()
-  const blob = new Blob([serializeBackup(state, now)], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${prefix}-${now.toISOString().replace(/[:.]/g, '-')}.json`
-  document.body.appendChild(link)
-  try {
-    link.click()
-  } finally {
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+async function saveBackup(state: AppState, kind: 'manual' | 'before-restore'): Promise<string> {
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
+    throw new Error('请通过本机 pnpm dev 服务打开日程安排，才能保存到项目备份目录。')
   }
+  let response: Response
+  try {
+    response = await fetch('/__local/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Calendar-Backup': kind },
+      body: serializeBackup(state),
+    })
+  } catch {
+    throw new Error('无法连接本地备份服务，请重新运行 pnpm dev。')
+  }
+  let result: { saved?: boolean; fileName?: string; error?: string }
+  try {
+    result = await response.json()
+  } catch {
+    throw new Error('本地备份服务未就绪，请重新运行 pnpm dev。')
+  }
+  if (!response.ok || !result.saved || !result.fileName) {
+    throw new Error(result.error ?? '备份保存失败，请检查项目目录是否可写。')
+  }
+  return result.fileName
 }
 
 export function BackupDialog({ open, onOpenChange, state, onRestore }: BackupDialogProps) {
@@ -36,6 +46,7 @@ export function BackupDialog({ open, onOpenChange, state, onRestore }: BackupDia
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [reading, setReading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const requestId = useRef(0)
 
@@ -73,20 +84,35 @@ export function BackupDialog({ open, onOpenChange, state, onRestore }: BackupDia
     }
   }
 
-  function restore() {
+  async function exportBackup() {
+    if (exporting) return
+    setExporting(true)
+    setError('')
+    setMessage('')
+    try {
+      const fileName = await saveBackup(state, 'manual')
+      setMessage(`备份已保存到项目目录 backups/${fileName}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '备份保存失败，请重试。')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  async function restore() {
     if (!preview || restoring) return
     setRestoring(true)
     setError('')
     setMessage('')
     try {
-      downloadBackup(state, '恢复前备份')
+      const fileName = await saveBackup(state, 'before-restore')
       if (!onRestore(preview.state)) {
-        setError('恢复失败，当前数据未替换。浏览器可能没有足够存储空间，请保管已发起下载的恢复前备份。')
+        setError(`恢复失败，当前数据未替换。恢复前备份已保存到 backups/${fileName}。`)
         return
       }
       setPreview(null)
       setFileName('')
-      setMessage('备份已恢复。恢复前数据的备份已发起下载，请检查浏览器下载记录并妥善保管。')
+      setMessage(`备份已恢复。恢复前数据已保存到 backups/${fileName}。`)
     } catch (err) {
       setError(err instanceof Error ? `恢复失败：${err.message}` : '恢复失败，请重试。')
     } finally {
@@ -99,21 +125,12 @@ export function BackupDialog({ open, onOpenChange, state, onRestore }: BackupDia
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>备份与恢复</DialogTitle>
-          <DialogDescription>将日程保存为本地 JSON 文件，或从已有备份恢复。</DialogDescription>
+          <DialogDescription>将日程保存到项目目录的 backups/ 文件夹，或从已有备份恢复。该文件夹不会同步到 Git。</DialogDescription>
         </DialogHeader>
         <section className="space-y-3 rounded-lg border p-4" aria-labelledby="backup-export-title">
           <h3 id="backup-export-title" className="text-sm font-medium">导出当前数据</h3>
           <p className="text-sm text-muted-foreground">包含 {state.tasks.length} 个任务、{state.holidays.length} 段假期、{state.trash.length} 个回收站项目，以及分组、学习主题和假期设置。</p>
-          <Button variant="outline" className="gap-2" onClick={() => {
-            setError('')
-            try {
-              downloadBackup(state)
-              setMessage('备份下载已发起，请检查浏览器下载记录并妥善保管文件。')
-            } catch {
-              setMessage('')
-              setError('无法发起备份下载，请重试。')
-            }
-          }}><Download className="h-4 w-4" />导出备份</Button>
+          <Button variant="outline" className="gap-2" disabled={exporting || restoring} onClick={() => void exportBackup()}><Download className="h-4 w-4" />{exporting ? '正在保存…' : '保存备份到项目目录'}</Button>
         </section>
         <section className="space-y-3 rounded-lg border p-4" aria-labelledby="backup-import-title">
           <h3 id="backup-import-title" className="text-sm font-medium">从备份恢复</h3>
@@ -132,8 +149,8 @@ export function BackupDialog({ open, onOpenChange, state, onRestore }: BackupDia
               <p>{preview.state.tasks.length} 个任务 · {preview.state.holidays.length} 段假期 · {preview.state.trash.length} 个回收站项目</p>
               <p className="text-muted-foreground">{preview.state.groups.length} 个分组 · {preview.state.themes.length} 个学习主题</p>
             </div>
-            <p className="text-sm text-destructive">恢复将替换所有当前数据（含回收站），不会合并任务。确认后先发起当前数据备份下载，再执行恢复。回收站仍按原过期时间自动清理。</p>
-            <Button variant="destructive" className="gap-2" disabled={reading || restoring} onClick={restore}><Upload className="h-4 w-4" />{restoring ? '正在恢复…' : '确认替换并恢复'}</Button>
+            <p className="text-sm text-destructive">恢复将替换所有当前数据（含回收站），不会合并任务。确认后先将当前数据保存到 backups/，保存成功才执行恢复。回收站仍按原过期时间自动清理。</p>
+            <Button variant="destructive" className="gap-2" disabled={reading || restoring || exporting} onClick={() => void restore()}><Upload className="h-4 w-4" />{restoring ? '正在恢复…' : '确认替换并恢复'}</Button>
           </div>}
         </section>
         {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}

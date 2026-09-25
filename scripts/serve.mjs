@@ -12,11 +12,15 @@
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
+import { randomBytes } from 'crypto'
 import { execSync } from 'child_process'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(__dirname, '..', 'out')
+const PROJECT_ROOT = path.resolve(__dirname, '..')
+const ROOT = path.join(PROJECT_ROOT, 'out')
+const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups')
+const MAX_BACKUP_BYTES = 10 * 1024 * 1024
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 const MIME = {
@@ -47,8 +51,85 @@ function serveFile(res, filePath) {
   }
 }
 
+function sendJson(res, status, body) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  })
+  res.end(JSON.stringify(body))
+}
+
+/** 备份只接受来自当前本地页面的请求，其他网站不能借浏览器写入本机。 */
+function isLocalBackupRequest(req) {
+  const host = req.headers.host
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && [`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`].includes(host)
+    && req.headers.origin === `http://${host}`
+}
+
+async function saveBackup(req, res) {
+  if (!isLocalBackupRequest(req)) {
+    sendJson(res, 403, { error: '仅允许从本地日程页面保存备份。' })
+    return
+  }
+  const kind = req.headers['x-calendar-backup']
+  if (!['manual', 'before-restore'].includes(kind) || req.headers['content-type']?.split(';')[0] !== 'application/json') {
+    sendJson(res, 415, { error: '备份请求格式无效。' })
+    return
+  }
+  if (Number(req.headers['content-length']) > MAX_BACKUP_BYTES) {
+    sendJson(res, 413, { error: '备份超过 10 MB，未保存。' })
+    return
+  }
+
+  try {
+    const chunks = []
+    let size = 0
+    for await (const chunk of req) {
+      size += chunk.length
+      if (size > MAX_BACKUP_BYTES) {
+        sendJson(res, 413, { error: '备份超过 10 MB，未保存。' })
+        return
+      }
+      chunks.push(chunk)
+    }
+    const content = Buffer.concat(chunks).toString('utf8')
+    let backup
+    try {
+      backup = JSON.parse(content)
+    } catch {
+      sendJson(res, 400, { error: '备份不是有效的 JSON。' })
+      return
+    }
+    if (backup?.version !== 1 || !Array.isArray(backup.state?.tasks) || !Array.isArray(backup.state?.holidays)) {
+      sendJson(res, 400, { error: '备份内容无效。' })
+      return
+    }
+
+    await fs.promises.mkdir(BACKUP_DIR, { recursive: true, mode: 0o700 })
+    const prefix = kind === 'manual' ? '日程安排备份' : '恢复前备份'
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const fileName = `${prefix}-${timestamp}-${randomBytes(4).toString('hex')}.json`
+    await fs.promises.writeFile(path.join(BACKUP_DIR, fileName), content, { flag: 'wx', mode: 0o600 })
+    sendJson(res, 201, { saved: true, fileName })
+  } catch (error) {
+    console.error('保存本地备份失败:', error)
+    sendJson(res, 500, { error: '无法写入项目备份目录。' })
+  }
+}
+
 function handle(req, res) {
   let url = req.url.split('?')[0]
+
+  if (url === '/__local/backup/status' && req.method === 'GET') {
+    sendJson(res, 200, { service: 'calendar-local-backup' })
+    return
+  }
+  if (url === '/__local/backup') {
+    if (req.method === 'POST') void saveBackup(req, res)
+    else sendJson(res, 405, { error: '仅支持 POST。' })
+    return
+  }
 
   let filePath = path.join(ROOT, url === '/' ? 'index.html' : url)
   if (serveFile(res, filePath)) return
@@ -93,9 +174,9 @@ async function isHealthy() {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 500)
-    const res = await fetch(`http://localhost:${PORT}/`, { signal: controller.signal })
+    const res = await fetch(`http://localhost:${PORT}/__local/backup/status`, { signal: controller.signal })
     clearTimeout(timer)
-    return res.ok
+    return res.ok && (await res.json()).service === 'calendar-local-backup'
   } catch {
     return false
   }
@@ -122,10 +203,12 @@ function killPort(port) {
     if (isWindows()) {
       // Windows: netstat 查 PID → taskkill
       const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' })
-      const pid = out.split('\n')[0]?.trim().split(/\s+/).pop()
+      const pid = out.split('\n')
+        .map((line) => line.trim().split(/\s+/))
+        .find((parts) => parts[0] === 'TCP' && parts[1]?.endsWith(`:${port}`) && parts[3] === 'LISTENING')?.[4]
       if (pid && pid !== '0') execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' })
     } else {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
+      execSync(`lsof -tiTCP:${port} -sTCP:LISTEN | xargs kill -9 2>/dev/null`, { stdio: 'ignore' })
     }
   } catch {
     /* 忽略 */
