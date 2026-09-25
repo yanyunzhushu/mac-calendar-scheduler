@@ -13,12 +13,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { addDays, compareKey, todayKey, type DateKey } from '@/lib/date-utils'
+import { addDays, compareKey, type DateKey } from '@/lib/date-utils'
 import type { Holiday } from '@/lib/types'
 
 interface HolidayDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  selectedDate: DateKey
   enabled: boolean
   holidays: Holiday[]
   onToggleEnabled: (enabled: boolean) => void
@@ -29,14 +30,15 @@ interface HolidayDialogProps {
 export function HolidayDialog({
   open,
   onOpenChange,
+  selectedDate,
   enabled,
   holidays,
   onToggleEnabled,
   onAdd,
   onDelete,
 }: HolidayDialogProps) {
-  const [start, setStart] = useState<DateKey>(todayKey())
-  const [end, setEnd] = useState<DateKey>(todayKey())
+  const [start, setStart] = useState<DateKey>(selectedDate)
+  const [end, setEnd] = useState<DateKey>(selectedDate)
   const validRange = Boolean(start && end && compareKey(start, end) <= 0)
   const overlapInfo = useMemo(() => {
     if (!validRange) return null
@@ -67,12 +69,9 @@ export function HolidayDialog({
   useEffect(() => {
     if (!open) return
 
-    const today = todayKey()
-    setStart(today)
-    setEnd((currentEnd) =>
-      currentEnd && compareKey(currentEnd, today) >= 0 ? currentEnd : today,
-    )
-  }, [open])
+    setStart(selectedDate)
+    setEnd(selectedDate)
+  }, [open, selectedDate])
 
   function handleStartChange(nextStart: DateKey) {
     setStart(nextStart)

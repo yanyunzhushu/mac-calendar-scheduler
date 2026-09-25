@@ -339,6 +339,7 @@ export function CalendarApp() {
       <HolidayDialog
         open={holidayOpen}
         onOpenChange={setHolidayOpen}
+        selectedDate={selected}
         enabled={state.holidayModeEnabled}
         holidays={state.holidays}
         onToggleEnabled={setHolidayModeEnabled}
